@@ -1,4 +1,8 @@
 .env
-__pyachce__
-**.__pyachce__
-.idea
+__pycache__/
+**/__pycache__/
+*.pyc
+.idea/
+.venv/
+*.zip
+admin_data.json

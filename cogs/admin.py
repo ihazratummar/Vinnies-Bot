@@ -64,7 +64,7 @@ class AdminCog(commands.Cog):
     async def cancelmatch(self, ctx, user: discord.Member):
         """Forcefully cancels an active match or pending challenge for a user."""
         from services.match_manager import match_manager
-        success, msg, match = await match_manager.cancel_challenge_or_match(user.id)
+        success, msg, match = await match_manager.cancel_challenge_or_match(ctx.guild.id, user.id)
         if success:
             await ctx.send(embed=build_success_embed(f"Successfully cancelled match/challenge for {user.mention}."), ephemeral=True)
         else:

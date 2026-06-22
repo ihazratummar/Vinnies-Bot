@@ -22,6 +22,7 @@ class Match:
     opponent: Player
     game_type: GameType
     channel_id: int
+    guild_id: int
     target_score: int = 5
     state: MatchState = MatchState.PENDING
     current_turn_player_id: Optional[int] = None

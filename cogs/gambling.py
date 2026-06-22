@@ -28,7 +28,7 @@ class GamblingCog(commands.Cog):
             await ctx.send(embed=build_error_embed("You cannot challenge a bot!"), ephemeral=True)
             return
 
-        success, msg = await match_manager.create_challenge(ctx.author.id, opponent.id, GameType.DICE, ctx.channel.id)
+        success, msg = await match_manager.create_challenge(ctx.guild.id, ctx.author.id, opponent.id, GameType.DICE, ctx.channel.id)
         if not success:
             await ctx.send(embed=build_error_embed(msg), ephemeral=True)
             return
@@ -45,7 +45,7 @@ class GamblingCog(commands.Cog):
             await ctx.send(embed=build_error_embed("You cannot challenge a bot!"), ephemeral=True)
             return
 
-        success, msg = await match_manager.create_challenge(ctx.author.id, opponent.id, GameType.COINFLIP, ctx.channel.id)
+        success, msg = await match_manager.create_challenge(ctx.guild.id, ctx.author.id, opponent.id, GameType.COINFLIP, ctx.channel.id)
         if not success:
             await ctx.send(embed=build_error_embed(msg), ephemeral=True)
             return
@@ -54,7 +54,7 @@ class GamblingCog(commands.Cog):
         await ctx.send(embed=build_challenge_embed(ctx.author, opponent, "coinflip"), view=view)
 
     async def accept_challenge(self, interaction: discord.Interaction):
-        success, msg, match = await match_manager.accept_challenge(interaction.user.id, interaction.channel.id)
+        success, msg, match = await match_manager.accept_challenge(interaction.guild.id, interaction.user.id, interaction.channel.id)
         if not success:
             await interaction.response.send_message(embed=build_error_embed(msg), ephemeral=True)
             return
@@ -73,7 +73,7 @@ class GamblingCog(commands.Cog):
         await interaction.response.send_message(embed=build_match_start_embed(challenger, opponent, game_type), view=view)
 
     async def cancel_match(self, interaction: discord.Interaction):
-        success, msg, match = await match_manager.cancel_challenge_or_match(interaction.user.id)
+        success, msg, match = await match_manager.cancel_challenge_or_match(interaction.guild.id, interaction.user.id)
         if success:
             try:
                 await interaction.message.edit(view=None)
@@ -173,6 +173,11 @@ class GamblingCog(commands.Cog):
             next_player = interaction.guild.get_member(match.current_turn_player_id)
             view = GameplayView(match, self.play_turn, self.cancel_match)
             await interaction.followup.send(content=f"{next_player.mention}, it's your turn!", view=view)
+
+    @commands.Cog.listener()
+    async def on_guild_channel_delete(self, channel: discord.abc.GuildChannel):
+        """Cleans up matches if the channel (like a ticket) gets deleted mid-match."""
+        await match_manager.cancel_matches_in_channel(channel.id)
 
 async def setup(bot):
     await bot.add_cog(GamblingCog(bot))
