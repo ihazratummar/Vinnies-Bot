@@ -2,7 +2,7 @@ import discord
 import json
 import os
 from discord.ext import commands
-from utils.embeds import build_success_embed
+from utils.embeds import build_success_embed, build_error_embed
 
 DATA_FILE = "admin_data.json"
 

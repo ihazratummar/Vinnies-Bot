@@ -19,6 +19,15 @@ class GamblingCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
+    async def get_safe_member(self, guild, user_id):
+        member = guild.get_member(user_id)
+        if not member:
+            try:
+                member = await guild.fetch_member(user_id)
+            except discord.NotFound:
+                return None
+        return member
+
     @commands.hybrid_command(name="dice")
     @commands.cooldown(1, 2, commands.BucketType.user)
     @in_ticket_channel()
@@ -59,9 +68,14 @@ class GamblingCog(commands.Cog):
             await interaction.response.send_message(embed=build_error_embed(msg), ephemeral=True)
             return
             
-        challenger = interaction.guild.get_member(match.challenger.id)
+        challenger = await self.get_safe_member(interaction.guild, match.challenger.id)
         opponent = interaction.user
         game_type = match.game_type.value
+        
+        if not challenger:
+            await interaction.response.send_message(embed=build_error_embed("The challenger could not be found! They may have left the server."), ephemeral=True)
+            await match_manager.cancel_challenge_or_match(interaction.guild.id, match.challenger.id)
+            return
         
         # Remove buttons from original challenge message
         try:
@@ -140,18 +154,21 @@ class GamblingCog(commands.Cog):
             
             if winner_id:
                 game_over = await match_manager.update_score(match, winner_id)
-                winner_member = interaction.guild.get_member(winner_id)
-                challenger_member = interaction.guild.get_member(match.challenger.id)
-                opponent_member = interaction.guild.get_member(match.opponent.id)
-                
                 if game_over:
                     await match_manager.end_match(match)
-                    await interaction.followup.send(embed=build_match_winner_embed(winner_member))
+                    winner_member = await self.get_safe_member(interaction.guild, winner_id)
+                    if winner_member:
+                        await interaction.followup.send(embed=build_match_winner_embed(winner_member))
                     return
                 else:
-                    await match_manager.next_turn(match) # Just to be safe or set explicitly below
-                    match.current_turn_player_id = winner_id # Winner goes first next round
+                    await match_manager.next_turn(match)
+                    match.current_turn_player_id = winner_id
                     view = GameplayView(match, self.play_turn, self.cancel_match)
+                    
+                    winner_member = await self.get_safe_member(interaction.guild, winner_id)
+                    challenger_member = await self.get_safe_member(interaction.guild, match.challenger.id)
+                    opponent_member = await self.get_safe_member(interaction.guild, match.opponent.id)
+                    
                     await interaction.followup.send(
                         embed=build_round_winner_embed(
                             winner_member, 
@@ -167,12 +184,15 @@ class GamblingCog(commands.Cog):
                 await interaction.followup.send(embed=build_error_embed("It's a tie! No points awarded this round."))
                 match.current_turn_player_id = match.challenger.id # Reset to challenger for tie breaker
                 view = GameplayView(match, self.play_turn, self.cancel_match)
-                await interaction.followup.send(content=f"{interaction.guild.get_member(match.challenger.id).mention}, it's your turn to roll/flip again.", view=view)
+                challenger_member = await self.get_safe_member(interaction.guild, match.challenger.id)
+                mention = challenger_member.mention if challenger_member else "Player"
+                await interaction.followup.send(content=f"{mention}, it's your turn to roll/flip again.", view=view)
         else:
             await match_manager.next_turn(match)
-            next_player = interaction.guild.get_member(match.current_turn_player_id)
+            next_player = await self.get_safe_member(interaction.guild, match.current_turn_player_id)
+            mention = next_player.mention if next_player else "Player"
             view = GameplayView(match, self.play_turn, self.cancel_match)
-            await interaction.followup.send(content=f"{next_player.mention}, it's your turn!", view=view)
+            await interaction.followup.send(content=f"{mention}, it's your turn!", view=view)
 
     @commands.Cog.listener()
     async def on_guild_channel_delete(self, channel: discord.abc.GuildChannel):
