@@ -1,6 +1,6 @@
-# Vinnie's Friend Bot - User Guide
+# V's Friend Bot - User Guide
 
-Welcome to **Vinnie's Friend Bot**! This Discord bot allows you to challenge your friends to fun mini-games. This complete point-to-point guide will show you everything you need to know to get started and play.
+Welcome to **V's Friend Bot**! This Discord bot allows you to challenge your friends to fun mini-games. This complete point-to-point guide will show you everything you need to know to get started and play.
 
 ---
 
@@ -47,7 +47,7 @@ The game continues round-by-round until a player reaches the target score.
 
 ## 🛠️ Admin Commands
 The bot owners have access to special commands for testing and moderation.
-- `/setdice <1-12>`: Forces the next dice roll in any match to be the exact number specified. 
+- `/setdice <2-12>`: Forces the next dice roll in any match to be the exact number specified. 
 - `/cancelmatch @user`: Forcefully cancels an active match or pending challenge for the mentioned user. Use this if a game gets stuck or players refuse to play.
 *(Note: These commands are restricted to specific Bot Owner IDs and can be used privately in DMs with the bot!)*
 
@@ -59,4 +59,4 @@ The bot owners have access to special commands for testing and moderation.
 - **"You cannot challenge a bot!"**: Make sure you are tagging a real human user.
 - **"You must accept the challenge in the same channel it was made"**: Ensure you interact with the bot in the channel where the challenge was originally sent.
 
-Enjoy playing Vinnie's Friend Bot!
+Enjoy playing V's Friend Bot!

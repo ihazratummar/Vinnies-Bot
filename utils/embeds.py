@@ -5,12 +5,12 @@ COLOR_SUCCESS = 0x57F287
 COLOR_ERROR = 0xED4245
 COLOR_WARNING = 0xFEE75C
 
-def build_challenge_embed(challenger: discord.Member, opponent: discord.Member, game_type: str) -> discord.Embed:
+def build_challenge_embed(challenger: discord.Member, opponent: discord.Member, game_type: str, target_score: int = 5) -> discord.Embed:
     embed = discord.Embed(
         title=f"🎮 New {game_type.capitalize()} Challenge!",
         description=f"{challenger.mention} has challenged {opponent.mention} to a **{game_type.capitalize()}** match!\n\n"
-                    f"**First to 5 wins.**\n"
-                    f"{opponent.mention}, type `!accept` to start the game or `!cancel` to decline.",
+                    f"**First to {target_score} wins.**\n"
+                    f"{opponent.mention}, click the buttons below to accept or decline.",
         color=COLOR_DEFAULT
     )
     embed.set_thumbnail(url=challenger.display_avatar.url)
@@ -20,7 +20,7 @@ def build_match_start_embed(challenger: discord.Member, opponent: discord.Member
     embed = discord.Embed(
         title="⚔️ Match Started!",
         description=f"The **{game_type.capitalize()}** match between {challenger.mention} and {opponent.mention} has begun!\n"
-                    f"{challenger.mention} goes first. Type `!{game_type}` to play.",
+                    f"{challenger.mention} goes first. Click the buttons below to play.",
         color=COLOR_SUCCESS
     )
     return embed
@@ -44,10 +44,10 @@ def build_round_winner_embed(winner: discord.Member, challenger: discord.Member,
     )
     return embed
     
-def build_match_winner_embed(winner: discord.Member) -> discord.Embed:
+def build_match_winner_embed(winner: discord.Member, target_score: int = 5) -> discord.Embed:
     embed = discord.Embed(
         title="🎉 MATCH OVER 🎉",
-        description=f"**{winner.mention} HAS REACHED 5 WINS!**\nCongratulations!",
+        description=f"**{winner.mention} HAS REACHED {target_score} WINS!**\nCongratulations!",
         color=COLOR_SUCCESS
     )
     return embed

@@ -13,10 +13,14 @@ class VinniesBot(commands.AutoShardedBot):
         super().__init__(command_prefix="!", intents=intents, help_command=None)
         
     async def setup_hook(self):
-        cogs = ["cogs.gambling", "cogs.admin"]
+        cogs = ["cogs.gambling", "cogs.admin", "cogs.economy"]
         for cog in cogs:
             await self.load_extension(cog)
             print(f"Loaded {cog}")
+            
+        print("Initializing database...")
+        from services.economy_manager import economy_manager
+        await economy_manager.init_db()
             
         print("Syncing command tree...")
         await self.tree.sync()

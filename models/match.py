@@ -1,10 +1,11 @@
 from enum import Enum
 from typing import Optional
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 class GameType(Enum):
     DICE = "dice"
     COINFLIP = "coinflip"
+    RPS = "rps"
 
 @dataclass
 class Player:
@@ -26,3 +27,5 @@ class Match:
     target_score: int = 5
     state: MatchState = MatchState.PENDING
     current_turn_player_id: Optional[int] = None
+    rps_choices: dict = field(default_factory=dict)
+    rps_first_picker_id: Optional[int] = None

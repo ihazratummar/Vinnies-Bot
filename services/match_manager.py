@@ -36,6 +36,9 @@ class MatchManager:
             opponent = Player(id=opponent_id)
             match = Match(challenger=challenger, opponent=opponent, game_type=game_type, channel_id=channel_id, guild_id=guild_id)
             
+            if game_type == GameType.RPS:
+                match.target_score = 3
+                
             self.pending_challenges[(guild_id, challenger_id)] = match
             return True, "Challenge created."
 

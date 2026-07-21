@@ -60,3 +60,29 @@ class GameplayView(discord.ui.View):
             await interaction.response.send_message(embed=build_error_embed("It's not your turn!"), ephemeral=True)
             return
         await self.action_callback(interaction, self.match, choice="Tails")
+
+class RPSView(discord.ui.View):
+    def __init__(self, match, action_callback):
+        super().__init__(timeout=None)
+        self.match = match
+        self.action_callback = action_callback
+
+        rock_btn = discord.ui.Button(label="Rock", style=discord.ButtonStyle.secondary, custom_id="btn_rock", emoji="🪨")
+        rock_btn.callback = self._make_callback("Rock")
+        self.add_item(rock_btn)
+
+        paper_btn = discord.ui.Button(label="Paper", style=discord.ButtonStyle.secondary, custom_id="btn_paper", emoji="📄")
+        paper_btn.callback = self._make_callback("Paper")
+        self.add_item(paper_btn)
+
+        scissors_btn = discord.ui.Button(label="Scissors", style=discord.ButtonStyle.secondary, custom_id="btn_scissors", emoji="✂️")
+        scissors_btn.callback = self._make_callback("Scissors")
+        self.add_item(scissors_btn)
+
+    def _make_callback(self, choice_str: str):
+        async def callback(interaction: discord.Interaction):
+            if interaction.user.id != self.match.current_turn_player_id:
+                await interaction.response.send_message(embed=build_error_embed("It's not your turn!"), ephemeral=True)
+                return
+            await self.action_callback(interaction, self.match, choice=choice_str)
+        return callback
