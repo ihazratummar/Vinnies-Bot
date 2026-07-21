@@ -84,7 +84,9 @@ class EconomyManager:
                             
                     if qualifies and daily_earned + 2 <= 150:
                         await cur.execute("UPDATE users SET message_count = message_count + 1, coins = coins + 2, last_message_time = NOW(), last_active_date = CURDATE(), daily_coins_earned = %s WHERE guild_id = %s AND user_id = %s", (daily_earned + 2, guild_id, user_id))
-                        return True, 2
+                        await cur.execute("SELECT coins FROM users WHERE guild_id = %s AND user_id = %s", (guild_id, user_id))
+                        total_coins = (await cur.fetchone())[0]
+                        return True, total_coins
                     else:
                         await cur.execute("UPDATE users SET message_count = message_count + 1 WHERE guild_id = %s AND user_id = %s", (guild_id, user_id))
                         return False, 0

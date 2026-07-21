@@ -36,10 +36,14 @@ class EconomyCog(commands.Cog):
         if message.author.bot or not message.guild:
             return
             
-        awarded, amount = await economy_manager.add_message(message.guild.id, message.author.id)
-        if awarded:
+        awarded, total_coins = await economy_manager.add_message(message.guild.id, message.author.id)
+        if awarded and total_coins > 0 and total_coins % 500 == 0:
             try:
-                await message.channel.send(f"🎉 Congratulations {message.author.mention}! You've reached a new message milestone and earned **{amount} coins**!")
+                reward_channel = discord.utils.get(message.guild.text_channels, name="chat-rewards")
+                if not reward_channel:
+                    reward_channel = await message.guild.create_text_channel("chat-rewards", reason="Created for economy milestone notifications")
+                
+                await reward_channel.send(f"🎉 Congratulations {message.author.mention}! You've reached a massive milestone of **{total_coins:,} coins**!")
             except discord.Forbidden:
                 pass
 
