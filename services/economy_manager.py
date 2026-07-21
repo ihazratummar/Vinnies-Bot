@@ -31,6 +31,9 @@ class EconomyManager:
                         user_id BIGINT,
                         message_count INT DEFAULT 0,
                         coins INT DEFAULT 0,
+                        last_message_time DATETIME DEFAULT NULL,
+                        last_active_date DATE DEFAULT NULL,
+                        daily_coins_earned INT DEFAULT 0,
                         PRIMARY KEY (guild_id, user_id)
                     )
                 """)
@@ -56,16 +59,35 @@ class EconomyManager:
         try:
             async with self.pool.acquire() as conn:
                 async with conn.cursor() as cur:
-                    await cur.execute("INSERT INTO users (guild_id, user_id, message_count, coins) VALUES (%s, %s, 1, 0) ON DUPLICATE KEY UPDATE message_count = message_count + 1", (guild_id, user_id))
-                    
-                    await cur.execute("SELECT message_count FROM users WHERE guild_id = %s AND user_id = %s", (guild_id, user_id))
+                    await cur.execute("SELECT last_message_time, last_active_date, daily_coins_earned FROM users WHERE guild_id = %s AND user_id = %s", (guild_id, user_id))
                     result = await cur.fetchone()
-                    msg_count = result[0]
                     
-                    if msg_count > 0 and msg_count % 1000 == 0:
-                        await cur.execute("UPDATE users SET coins = coins + 10 WHERE guild_id = %s AND user_id = %s", (guild_id, user_id))
-                        return True, 10
-            return False, 0
+                    if not result:
+                        await cur.execute("INSERT INTO users (guild_id, user_id, message_count, coins, last_message_time, last_active_date, daily_coins_earned) VALUES (%s, %s, 1, 2, NOW(), CURDATE(), 2)", (guild_id, user_id))
+                        return True, 2
+                        
+                    last_msg_time, last_active_date, daily_earned = result
+                    
+                    await cur.execute("SELECT CURDATE()")
+                    current_date = (await cur.fetchone())[0]
+                    if last_active_date != current_date:
+                        daily_earned = 0
+                        
+                    qualifies = False
+                    if last_msg_time is None:
+                        qualifies = True
+                    else:
+                        await cur.execute("SELECT TIMESTAMPDIFF(SECOND, %s, NOW())", (last_msg_time,))
+                        diff_row = await cur.fetchone()
+                        if diff_row and diff_row[0] is not None and diff_row[0] >= 30:
+                            qualifies = True
+                            
+                    if qualifies and daily_earned + 2 <= 150:
+                        await cur.execute("UPDATE users SET message_count = message_count + 1, coins = coins + 2, last_message_time = NOW(), last_active_date = CURDATE(), daily_coins_earned = %s WHERE guild_id = %s AND user_id = %s", (daily_earned + 2, guild_id, user_id))
+                        return True, 2
+                    else:
+                        await cur.execute("UPDATE users SET message_count = message_count + 1 WHERE guild_id = %s AND user_id = %s", (guild_id, user_id))
+                        return False, 0
         except Exception as e:
             print(f"Warning: Database error in add_message: {e}")
             return False, 0
@@ -79,6 +101,13 @@ class EconomyManager:
                 if result:
                     return result[0], result[1]
                 return 0, 0
+
+    async def add_coins(self, guild_id: int, user_id: int, amount: int):
+        if not self.pool: return False
+        async with self.pool.acquire() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute("INSERT INTO users (guild_id, user_id, message_count, coins, daily_coins_earned) VALUES (%s, %s, 0, %s, 0) ON DUPLICATE KEY UPDATE coins = coins + %s", (guild_id, user_id, amount, amount))
+                return True
 
     async def deduct_coins(self, guild_id: int, user_id: int, amount: int):
         if not self.pool: return False

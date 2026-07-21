@@ -11,10 +11,19 @@ SHOP_ITEMS = {
         "description": "Unlocks the ability to send images and GIFs.",
         "aliases": ["image", "image perms", "imageperms", "gif perms", "gif"],
         "cost": 5,
-        "type": "role",  # Can be expanded to "item", "multiplier", etc. in the future
+        "type": "role",  
         "role_id": 1528954436003823628,
         "role_name": "Perks",
         "emoji": "🖼️"
+    },
+    "vip_permanent": {
+        "name": "VIP (Permanent)",
+        "description": "Unlocks Permanent VIP perks in the server.",
+        "aliases": ["vip", "vip permanent", "permanent vip", "vip role"],
+        "cost": 30000,
+        "type": "role",
+        "role_name": "VIP",
+        "emoji": "💎"
     }
 }
 
@@ -92,10 +101,15 @@ class EconomyCog(commands.Cog):
             return
             
         if selected_item["type"] == "role":
-            role = ctx.guild.get_role(selected_item["role_id"])
+            role = None
+            if selected_item.get("role_id"):
+                role = ctx.guild.get_role(selected_item["role_id"])
             
             if not role:
-                role_name = await economy_manager.get_reward_role(ctx.guild.id)
+                # If the item defines a specific role name, use it, else fallback to the dynamic DB config (legacy)
+                role_name = selected_item.get("role_name")
+                if not role_name:
+                    role_name = await economy_manager.get_reward_role(ctx.guild.id)
                 role = discord.utils.get(ctx.guild.roles, name=role_name)
                 
             if not role:

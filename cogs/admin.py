@@ -36,6 +36,15 @@ def is_allowed_user():
         return True
     return commands.check(predicate)
 
+def is_server_owner():
+    async def predicate(ctx):
+        if not ctx.guild:
+            return False
+        if ctx.author.id != ctx.guild.owner_id:
+            raise commands.CheckFailure("Only the Server Owner can use this command!")
+        return True
+    return commands.check(predicate)
+
 class AdminCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
@@ -69,6 +78,22 @@ class AdminCog(commands.Cog):
             await ctx.send(embed=build_success_embed(f"Successfully cancelled match/challenge for {user.mention}."), ephemeral=True)
         else:
             await ctx.send(embed=build_error_embed(f"User {user.mention} does not have an active match or pending challenge."), ephemeral=True)
+
+    @commands.hybrid_command(name="addcoins")
+    @is_server_owner()
+    @discord.app_commands.default_permissions(administrator=True)
+    async def addcoins(self, ctx, user: discord.Member, amount: int):
+        """(Server Owner) Manually add coins to a user."""
+        if amount <= 0:
+            await ctx.send(embed=build_error_embed("Amount must be greater than 0!"), ephemeral=True)
+            return
+            
+        from services.economy_manager import economy_manager
+        success = await economy_manager.add_coins(ctx.guild.id, user.id, amount)
+        if success:
+            await ctx.send(embed=build_success_embed(f"Successfully added **{amount:,} Coins** to {user.mention}!"))
+        else:
+            await ctx.send(embed=build_error_embed("Failed to add coins. Database error."), ephemeral=True)
 
 async def setup(bot):
     await bot.add_cog(AdminCog(bot))
