@@ -191,7 +191,7 @@ class EconomyCog(commands.Cog):
     @commands.hybrid_command(name="gift")
     @discord.app_commands.describe(user="The user you want to gift 1 coin to")
     async def gift(self, ctx, user: discord.Member):
-        """Gift 1 coin to another user (Limit: 1 per specific user per day)."""
+        """Gift 1 coin to another user (Limit: 3 per day)."""
         await ctx.defer()
         if user.bot:
             await ctx.send(embed=build_error_embed("You cannot gift coins to bots!"), ephemeral=True)

@@ -91,7 +91,7 @@ class EconomyManager:
                         if diff_row and diff_row[0] is not None and diff_row[0] >= 30:
                             qualifies = True
                             
-                    if qualifies and daily_earned + 2 <= 150:
+                    if qualifies:
                         await cur.execute("UPDATE users SET message_count = message_count + 1, coins = coins + 2, last_message_time = NOW(), last_active_date = CURDATE(), daily_coins_earned = %s WHERE guild_id = %s AND user_id = %s", (daily_earned + 2, guild_id, user_id))
                         await cur.execute("SELECT coins FROM users WHERE guild_id = %s AND user_id = %s", (guild_id, user_id))
                         total_coins = (await cur.fetchone())[0]
@@ -137,11 +137,11 @@ class EconomyManager:
         
         async with self.pool.acquire() as conn:
             async with conn.cursor() as cur:
-                # Check daily limit
-                await cur.execute("SELECT COUNT(*) FROM daily_gifts WHERE guild_id = %s AND sender_id = %s AND receiver_id = %s AND timestamp = CURDATE()", (guild_id, sender_id, receiver_id))
+                # Check daily limit (max 3 gifts per day)
+                await cur.execute("SELECT COUNT(*) FROM daily_gifts WHERE guild_id = %s AND sender_id = %s AND timestamp = CURDATE()", (guild_id, sender_id))
                 count = (await cur.fetchone())[0]
-                if count > 0:
-                    return False, "You have already gifted this user today!"
+                if count >= 3:
+                    return False, "You can only send up to 3 gifts per day!"
                 
                 # Check balance
                 await cur.execute("SELECT coins FROM users WHERE guild_id = %s AND user_id = %s", (guild_id, sender_id))

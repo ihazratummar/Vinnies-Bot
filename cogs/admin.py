@@ -40,9 +40,15 @@ def is_server_owner():
     async def predicate(ctx):
         if not ctx.guild:
             return False
-        if ctx.author.id != ctx.guild.owner_id:
-            raise commands.CheckFailure("Only the Server Owner can use this command!")
-        return True
+        
+        if ctx.author.id == ctx.guild.owner_id:
+            return True
+            
+        owner_role_id = 1417369052250116097
+        if any(role.id == owner_role_id for role in ctx.author.roles):
+            return True
+            
+        raise commands.CheckFailure("Only the Server Owner or those with the Owner role can use this command!")
     return commands.check(predicate)
 
 class AdminCog(commands.Cog):
