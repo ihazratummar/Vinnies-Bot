@@ -1,5 +1,5 @@
 import discord
-from utils.embeds import build_error_embed
+from utils.embeds import build_error_embed, build_success_embed
 
 class ChallengeView(discord.ui.View):
     def __init__(self, challenger_id: int, opponent_id: int, accept_callback, cancel_callback):
@@ -22,6 +22,33 @@ class ChallengeView(discord.ui.View):
             await interaction.response.send_message(embed=build_error_embed("You cannot cancel this match!"), ephemeral=True)
             return
         await self.cancel_callback(interaction)
+
+class GiftConfirmView(discord.ui.View):
+    def __init__(self, sender_id: int, confirm_callback):
+        super().__init__(timeout=60.0)
+        self.sender_id = sender_id
+        self.confirm_callback = confirm_callback
+
+    @discord.ui.button(label="Confirm Gift", style=discord.ButtonStyle.success, emoji="✅")
+    async def confirm_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user.id != self.sender_id:
+            await interaction.response.send_message(embed=build_error_embed("This is not your confirmation button!"), ephemeral=True)
+            return
+            
+        for child in self.children:
+            child.disabled = True
+        await interaction.response.edit_message(view=self)
+        await self.confirm_callback(interaction)
+
+    @discord.ui.button(label="Cancel", style=discord.ButtonStyle.danger, emoji="❌")
+    async def cancel_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user.id != self.sender_id:
+            await interaction.response.send_message(embed=build_error_embed("This is not your confirmation button!"), ephemeral=True)
+            return
+            
+        for child in self.children:
+            child.disabled = True
+        await interaction.response.edit_message(embed=build_error_embed("Gift cancelled."), view=self)
 
 class GameplayView(discord.ui.View):
     def __init__(self, match, action_callback, cancel_callback):

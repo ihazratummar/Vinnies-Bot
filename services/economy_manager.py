@@ -131,30 +131,26 @@ class EconomyManager:
                 await cur.execute("UPDATE users SET coins = coins - %s WHERE guild_id = %s AND user_id = %s", (amount, guild_id, user_id))
                 return True
 
-    async def gift_coin(self, guild_id: int, sender_id: int, receiver_id: int):
+    async def gift_coin(self, guild_id: int, sender_id: int, receiver_id: int, amount: int):
         if not self.pool: return False, "Database not connected."
         if sender_id == receiver_id: return False, "You cannot gift yourself!"
+        if amount <= 0: return False, "Amount must be greater than 0!"
         
         async with self.pool.acquire() as conn:
             async with conn.cursor() as cur:
-                # Check daily limit (max 3 gifts per day)
-                await cur.execute("SELECT COUNT(*) FROM daily_gifts WHERE guild_id = %s AND sender_id = %s AND timestamp = CURDATE()", (guild_id, sender_id))
-                count = (await cur.fetchone())[0]
-                if count >= 3:
-                    return False, "You can only send up to 3 gifts per day!"
                 
                 # Check balance
                 await cur.execute("SELECT coins FROM users WHERE guild_id = %s AND user_id = %s", (guild_id, sender_id))
                 result = await cur.fetchone()
-                if not result or result[0] < 1:
-                    return False, "You don't have enough coins to gift!"
+                if not result or result[0] < amount:
+                    return False, f"You don't have enough coins! You need **{amount:,}** coins."
                 
                 # Deduct sender, add to receiver
-                await cur.execute("UPDATE users SET coins = coins - 1 WHERE guild_id = %s AND user_id = %s", (guild_id, sender_id))
-                await cur.execute("INSERT INTO users (guild_id, user_id, message_count, coins) VALUES (%s, %s, 0, 1) ON DUPLICATE KEY UPDATE coins = coins + 1", (guild_id, receiver_id))
+                await cur.execute("UPDATE users SET coins = coins - %s WHERE guild_id = %s AND user_id = %s", (amount, guild_id, sender_id))
+                await cur.execute("INSERT INTO users (guild_id, user_id, message_count, coins) VALUES (%s, %s, 0, %s) ON DUPLICATE KEY UPDATE coins = coins + %s", (guild_id, receiver_id, amount, amount))
                 
-                # Record gift
-                await cur.execute("INSERT INTO daily_gifts (guild_id, sender_id, receiver_id, timestamp) VALUES (%s, %s, %s, CURDATE())", (guild_id, sender_id, receiver_id))
+                # Record gift (still keeping for historical logs)
+                await cur.execute("INSERT INTO daily_gifts (guild_id, sender_id, receiver_id, timestamp) VALUES (%s, %s, %s, NOW())", (guild_id, sender_id, receiver_id))
                 return True, "Gift sent successfully!"
 
     async def get_reward_role(self, guild_id: int):

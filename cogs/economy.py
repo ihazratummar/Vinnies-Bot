@@ -3,6 +3,7 @@ from discord.ext import commands
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from services.economy_manager import economy_manager
 from utils.embeds import build_success_embed, build_error_embed
+from utils.views import GiftConfirmView
 
 # A scalable configuration for the shop.
 # To add a new item, simply add a new dictionary entry below.
@@ -189,19 +190,37 @@ class EconomyCog(commands.Cog):
             await ctx.send(embed=build_error_embed("This item type is not supported yet!"), ephemeral=True)
 
     @commands.hybrid_command(name="gift")
-    @discord.app_commands.describe(user="The user you want to gift 1 coin to")
-    async def gift(self, ctx, user: discord.Member):
-        """Gift 1 coin to another user (Limit: 3 per day)."""
-        await ctx.defer()
+    @discord.app_commands.describe(user="The user you want to gift coins to", amount="Amount of coins to gift")
+    async def gift(self, ctx, user: discord.Member, amount: int):
+        """Gift coins to another user with no daily limit."""
         if user.bot:
             await ctx.send(embed=build_error_embed("You cannot gift coins to bots!"), ephemeral=True)
             return
             
-        success, msg = await economy_manager.gift_coin(ctx.guild.id, ctx.author.id, user.id)
-        if success:
-            await ctx.send(embed=build_success_embed(f"Successfully gifted 1 coin to {user.mention}!"))
-        else:
-            await ctx.send(embed=build_error_embed(msg), ephemeral=True)
+        if amount <= 0:
+            await ctx.send(embed=build_error_embed("Amount must be greater than 0!"), ephemeral=True)
+            return
+            
+        _, coins = await economy_manager.get_balance(ctx.guild.id, ctx.author.id)
+        if coins < amount:
+            await ctx.send(embed=build_error_embed(f"You don't have enough coins! You need **{amount:,}** coins."), ephemeral=True)
+            return
+
+        embed = discord.Embed(
+            title="🎁 Confirm Gift",
+            description=f"Are you sure you want to gift **{amount:,} coins** to {user.mention}?*",
+            color=0xFEE75C
+        )
+
+        async def confirm_callback(interaction: discord.Interaction):
+            success, msg = await economy_manager.gift_coin(ctx.guild.id, ctx.author.id, user.id, amount)
+            if success:
+                await interaction.followup.send(embed=build_success_embed(f"Successfully gifted **{amount:,} coins** to {user.mention}!"))
+            else:
+                await interaction.followup.send(embed=build_error_embed(msg), ephemeral=True)
+
+        view = GiftConfirmView(sender_id=ctx.author.id, confirm_callback=confirm_callback)
+        await ctx.send(embed=embed, view=view)
 
 async def setup(bot):
     await bot.add_cog(EconomyCog(bot))
