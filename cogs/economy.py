@@ -1,5 +1,6 @@
 import discord
 from discord.ext import commands
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from services.economy_manager import economy_manager
 from utils.embeds import build_success_embed, build_error_embed
 
@@ -10,7 +11,7 @@ SHOP_ITEMS = {
         "name": "Image Perms",
         "description": "Unlocks the ability to send images and GIFs.",
         "aliases": ["image", "image perms", "imageperms", "gif perms", "gif"],
-        "cost": 5,
+        "cost": 10000,
         "type": "role",  
         "role_id": 1528954436003823628,
         "role_name": "Perks",
@@ -24,12 +25,46 @@ SHOP_ITEMS = {
         "type": "role",
         "role_name": "VIP",
         "emoji": "💎"
+    },
+    "vip_rental": {
+        "name": "VIP (30-day rental)",
+        "description": "Unlocks VIP perks for 30 days.",
+        "aliases": ["vip rental", "rental vip", "vip 30"],
+        "cost": 12000,
+        "type": "rental_role",
+        "duration_days": 30,
+        "role_name": "VIP",
+        "emoji": "⭐"
     }
 }
 
 class EconomyCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+        self.scheduler = AsyncIOScheduler()
+        self.scheduler.add_job(self.check_expired_rentals, 'interval', hours=1)
+        self.scheduler.start()
+
+    async def check_expired_rentals(self):
+        expired = await economy_manager.get_expired_rentals()
+        for guild_id, user_id, role_name in expired:
+            guild = self.bot.get_guild(guild_id)
+            if guild:
+                member = guild.get_member(user_id)
+                if not member:
+                    try:
+                        member = await guild.fetch_member(user_id)
+                    except discord.NotFound:
+                        pass
+                
+                if member:
+                    role = discord.utils.get(guild.roles, name=role_name)
+                    if role and role in member.roles:
+                        try:
+                            await member.remove_roles(role, reason="VIP Rental Expired")
+                        except discord.Forbidden:
+                            pass
+            await economy_manager.remove_rental(guild_id, user_id, role_name)
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
@@ -39,7 +74,12 @@ class EconomyCog(commands.Cog):
         awarded, total_coins = await economy_manager.add_message(message.guild.id, message.author.id)
         if awarded and total_coins > 0 and total_coins % 500 == 0:
             try:
-                reward_channel = discord.utils.get(message.guild.text_channels, name="chat-rewards")
+                reward_channel = None
+                for channel in message.guild.text_channels:
+                    if "chat-reward" in channel.name.lower() or "chatreward" in channel.name.lower():
+                        reward_channel = channel
+                        break
+                        
                 if not reward_channel:
                     reward_channel = await message.guild.create_text_channel("chat-rewards", reason="Created for economy milestone notifications")
                 
@@ -104,7 +144,7 @@ class EconomyCog(commands.Cog):
             await ctx.send(embed=build_error_embed("That item does not exist in the shop! Try `/shop` to see available items."), ephemeral=True)
             return
             
-        if selected_item["type"] == "role":
+        if selected_item["type"] in ["role", "rental_role"]:
             role = None
             if selected_item.get("role_id"):
                 role = ctx.guild.get_role(selected_item["role_id"])
@@ -136,6 +176,8 @@ class EconomyCog(commands.Cog):
             # Assign role
             try:
                 await ctx.author.add_roles(role)
+                if selected_item["type"] == "rental_role":
+                    await economy_manager.add_rental(ctx.guild.id, ctx.author.id, role_name, selected_item["duration_days"])
                 await ctx.send(embed=build_success_embed(f"Successfully purchased **{selected_item['name']}** for {selected_item['cost']} Coins!"))
             except discord.Forbidden:
                 # Direct DB refund for robust failure handling

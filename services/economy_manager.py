@@ -52,6 +52,15 @@ class EconomyManager:
                         reward_role_name VARCHAR(255) DEFAULT 'Perks'
                     )
                 """)
+                await cur.execute("""
+                    CREATE TABLE IF NOT EXISTS role_rentals (
+                        guild_id BIGINT,
+                        user_id BIGINT,
+                        role_name VARCHAR(255),
+                        expires_at DATETIME,
+                        PRIMARY KEY (guild_id, user_id, role_name)
+                    )
+                """)
         print("MySQL Database connected and tables verified!")
 
     async def add_message(self, guild_id: int, user_id: int):
@@ -163,6 +172,31 @@ class EconomyManager:
         async with self.pool.acquire() as conn:
             async with conn.cursor() as cur:
                 await cur.execute("INSERT INTO guild_config (guild_id, reward_role_name) VALUES (%s, %s) ON DUPLICATE KEY UPDATE reward_role_name = %s", (guild_id, role_name, role_name))
+                return True
+
+    async def add_rental(self, guild_id: int, user_id: int, role_name: str, duration_days: int):
+        if not self.pool: return False
+        async with self.pool.acquire() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute("""
+                    INSERT INTO role_rentals (guild_id, user_id, role_name, expires_at) 
+                    VALUES (%s, %s, %s, DATE_ADD(NOW(), INTERVAL %s DAY))
+                    ON DUPLICATE KEY UPDATE expires_at = DATE_ADD(expires_at, INTERVAL %s DAY)
+                """, (guild_id, user_id, role_name, duration_days, duration_days))
+                return True
+
+    async def get_expired_rentals(self):
+        if not self.pool: return []
+        async with self.pool.acquire() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute("SELECT guild_id, user_id, role_name FROM role_rentals WHERE expires_at <= NOW()")
+                return await cur.fetchall()
+
+    async def remove_rental(self, guild_id: int, user_id: int, role_name: str):
+        if not self.pool: return False
+        async with self.pool.acquire() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute("DELETE FROM role_rentals WHERE guild_id = %s AND user_id = %s AND role_name = %s", (guild_id, user_id, role_name))
                 return True
 
 economy_manager = EconomyManager()
