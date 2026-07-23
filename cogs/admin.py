@@ -101,5 +101,21 @@ class AdminCog(commands.Cog):
         else:
             await ctx.send(embed=build_error_embed("Failed to add coins. Database error."), ephemeral=True)
 
+    @commands.hybrid_command(name="deductcoins")
+    @is_server_owner()
+    @discord.app_commands.default_permissions(administrator=True)
+    async def deductcoins(self, ctx, user: discord.Member, amount: int):
+        """(Server Owner) Manually deduct coins from a user."""
+        if amount <= 0:
+            await ctx.send(embed=build_error_embed("Amount must be greater than 0!"), ephemeral=True)
+            return
+            
+        from services.economy_manager import economy_manager
+        success = await economy_manager.deduct_coins(ctx.guild.id, user.id, amount)
+        if success:
+            await ctx.send(embed=build_success_embed(f"Successfully deducted **{amount:,} Coins** from {user.mention}!"))
+        else:
+            await ctx.send(embed=build_error_embed(f"{user.mention} doesn't have enough coins to deduct that amount!"), ephemeral=True)
+
 async def setup(bot):
     await bot.add_cog(AdminCog(bot))

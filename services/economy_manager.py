@@ -56,9 +56,16 @@ class EconomyManager:
                     CREATE TABLE IF NOT EXISTS role_rentals (
                         guild_id BIGINT,
                         user_id BIGINT,
-                        role_name VARCHAR(255),
+                        role_name VARCHAR(100),
                         expires_at DATETIME,
                         PRIMARY KEY (guild_id, user_id, role_name)
+                    )
+                """)
+                await cur.execute("""
+                    CREATE TABLE IF NOT EXISTS leaderboard_messages (
+                        guild_id BIGINT PRIMARY KEY,
+                        channel_id BIGINT,
+                        message_id BIGINT
                     )
                 """)
         print("MySQL Database connected and tables verified!")
@@ -149,8 +156,6 @@ class EconomyManager:
                 await cur.execute("UPDATE users SET coins = coins - %s WHERE guild_id = %s AND user_id = %s", (amount, guild_id, sender_id))
                 await cur.execute("INSERT INTO users (guild_id, user_id, message_count, coins) VALUES (%s, %s, 0, %s) ON DUPLICATE KEY UPDATE coins = coins + %s", (guild_id, receiver_id, amount, amount))
                 
-                # Record gift (still keeping for historical logs)
-                await cur.execute("INSERT INTO daily_gifts (guild_id, sender_id, receiver_id, timestamp) VALUES (%s, %s, %s, NOW())", (guild_id, sender_id, receiver_id))
                 return True, "Gift sent successfully!"
 
     async def get_reward_role(self, guild_id: int):
@@ -159,9 +164,7 @@ class EconomyManager:
             async with conn.cursor() as cur:
                 await cur.execute("SELECT reward_role_name FROM guild_config WHERE guild_id = %s", (guild_id,))
                 result = await cur.fetchone()
-                if result and result[0]:
-                    return result[0]
-                return "Perks"
+                return result[0] if result else "Perks"
 
     async def set_reward_role(self, guild_id: int, role_name: str):
         if not self.pool: return False
@@ -194,5 +197,38 @@ class EconomyManager:
             async with conn.cursor() as cur:
                 await cur.execute("DELETE FROM role_rentals WHERE guild_id = %s AND user_id = %s AND role_name = %s", (guild_id, user_id, role_name))
                 return True
+
+    async def get_top_users(self, guild_id: int, limit: int = 10):
+        if not self.pool: return []
+        async with self.pool.acquire() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute("SELECT user_id, coins FROM users WHERE guild_id = %s ORDER BY coins DESC LIMIT %s", (guild_id, limit))
+                return await cur.fetchall()
+
+    async def get_leaderboard_msg(self, guild_id: int):
+        if not self.pool: return None, None
+        async with self.pool.acquire() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute("SELECT channel_id, message_id FROM leaderboard_messages WHERE guild_id = %s", (guild_id,))
+                return await cur.fetchone() or (None, None)
+                
+    async def get_all_leaderboards(self):
+        if not self.pool: return []
+        async with self.pool.acquire() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute("SELECT guild_id, channel_id, message_id FROM leaderboard_messages")
+                return await cur.fetchall()
+
+    async def delete_leaderboard_msg(self, guild_id: int):
+        if not self.pool: return
+        async with self.pool.acquire() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute("DELETE FROM leaderboard_messages WHERE guild_id = %s", (guild_id,))
+
+    async def set_leaderboard_msg(self, guild_id: int, channel_id: int, message_id: int):
+        if not self.pool: return
+        async with self.pool.acquire() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute("INSERT INTO leaderboard_messages (guild_id, channel_id, message_id) VALUES (%s, %s, %s) ON DUPLICATE KEY UPDATE channel_id = %s, message_id = %s", (guild_id, channel_id, message_id, channel_id, message_id))
 
 economy_manager = EconomyManager()

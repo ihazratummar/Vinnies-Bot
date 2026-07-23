@@ -1,9 +1,10 @@
 import discord
+from discord import app_commands
 from discord.ext import commands
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from services.economy_manager import economy_manager
 from utils.embeds import build_success_embed, build_error_embed
-from utils.views import GiftConfirmView
+from utils.views import GiftConfirmView, LeaderboardView
 
 # A scalable configuration for the shop.
 # To add a new item, simply add a new dictionary entry below.
@@ -44,7 +45,28 @@ class EconomyCog(commands.Cog):
         self.bot = bot
         self.scheduler = AsyncIOScheduler()
         self.scheduler.add_job(self.check_expired_rentals, 'interval', hours=1)
+        self.scheduler.add_job(self.auto_refresh_leaderboards, 'interval', minutes=1)
         self.scheduler.start()
+
+    async def auto_refresh_leaderboards(self):
+        leaderboards = await economy_manager.get_all_leaderboards()
+        for guild_id, channel_id, message_id in leaderboards:
+            guild = self.bot.get_guild(guild_id)
+            if not guild: continue
+            
+            channel = guild.get_channel(channel_id)
+            if not channel: continue
+            
+            try:
+                msg = await channel.fetch_message(message_id)
+                top_users = await economy_manager.get_top_users(guild.id, limit=10)
+                view = LeaderboardView(guild=guild, top_users=top_users)
+                await msg.edit(view=view)
+            except (discord.NotFound, discord.Forbidden):
+                # If message is deleted or we don't have permissions (or it's authored by webhook), remove from DB
+                await economy_manager.delete_leaderboard_msg(guild.id)
+            except Exception as e:
+                print(f"Error auto-refreshing leaderboard: {e}")
 
     async def check_expired_rentals(self):
         expired = await economy_manager.get_expired_rentals()
@@ -221,6 +243,38 @@ class EconomyCog(commands.Cog):
 
         view = GiftConfirmView(sender_id=ctx.author.id, confirm_callback=confirm_callback)
         await ctx.send(embed=embed, view=view)
+
+    @commands.hybrid_command(name="leaderboard", aliases=["lb", "top"])
+    @commands.has_permissions(administrator=True)
+    @app_commands.default_permissions(administrator=True)
+    async def leaderboard(self, ctx):
+        """View the server's top economy leaderboard. Admin only."""
+        await ctx.defer()
+        
+        # 1. Fetch old message and delete it to prevent spam
+        old_channel_id, old_message_id = await economy_manager.get_leaderboard_msg(ctx.guild.id)
+        if old_channel_id and old_message_id:
+            try:
+                old_channel = ctx.guild.get_channel(old_channel_id)
+                if old_channel:
+                    old_msg = await old_channel.fetch_message(old_message_id)
+                    await old_msg.delete()
+            except discord.NotFound:
+                pass
+            except discord.Forbidden:
+                pass
+                
+        # 2. Fetch top 10 users from database
+        top_users = await economy_manager.get_top_users(ctx.guild.id, limit=10)
+        
+        # 3. Create the LayoutView (without embeds!)
+        view = LeaderboardView(guild=ctx.guild, top_users=top_users)
+        
+        # 4. Send new message as Bot Client (NOT Interaction Webhook)
+        msg = await ctx.channel.send(view=view)
+        await economy_manager.set_leaderboard_msg(ctx.guild.id, msg.channel.id, msg.id)
+        
+        await ctx.send("Leaderboard deployed!", ephemeral=True)
 
 async def setup(bot):
     await bot.add_cog(EconomyCog(bot))

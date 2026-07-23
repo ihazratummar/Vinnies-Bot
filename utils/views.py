@@ -50,6 +50,49 @@ class GiftConfirmView(discord.ui.View):
             child.disabled = True
         await interaction.response.edit_message(embed=build_error_embed("Gift cancelled."), view=self)
 
+class LeaderboardContainer(discord.ui.Container):
+    def __init__(self, guild: discord.Guild = None, top_users: list = None):
+        super().__init__(accent_colour=discord.Colour.gold())
+        self.guild = guild
+        if top_users is not None and guild is not None:
+            self.update_content(top_users, guild)
+
+    def update_content(self, top_users, guild: discord.Guild):
+        self.clear_items()
+        self.add_item(discord.ui.TextDisplay("# 🏆 Server Economy Leaderboard\n"))
+        
+        if not top_users:
+            self.add_item(discord.ui.TextDisplay("*No users found on the leaderboard yet!*"))
+        else:
+            for i, (user_id, coins) in enumerate(top_users):
+                member = guild.get_member(user_id)
+                name = member.display_name if member else f"User {user_id}"
+                
+                if i == 0:
+                    accessory = None
+                    if member and member.display_avatar:
+                        accessory = discord.ui.Thumbnail(media=member.display_avatar.url)
+                        
+                    if accessory:
+                        section = discord.ui.Section(
+                            f"**🥇 1st Place:** {name} — {coins:,} 🪙\n*The reigning champion!*",
+                            accessory=accessory
+                        )
+                        self.add_item(section)
+                    else:
+                        self.add_item(discord.ui.TextDisplay(f"**🥇 1st Place:** {name} — {coins:,} 🪙\n*The reigning champion!*"))
+                    self.add_item(discord.ui.Separator())
+                else:
+                    medals = ["🥇", "🥈", "🥉"]
+                    medal = medals[i] if i < 3 else f"**#{i+1}**"
+                    self.add_item(discord.ui.TextDisplay(f"> {medal} **{name}** — {coins:,} 🪙"))
+
+class LeaderboardView(discord.ui.LayoutView):
+    def __init__(self, guild: discord.Guild = None, top_users: list = None):
+        super().__init__(timeout=None)
+        self.container = LeaderboardContainer(guild, top_users)
+        self.add_item(self.container)
+
 class GameplayView(discord.ui.View):
     def __init__(self, match, action_callback, cancel_callback):
         super().__init__(timeout=None)
