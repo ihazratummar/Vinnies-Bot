@@ -1,3 +1,5 @@
+[![Built by RelayWorks](https://img.shields.io/badge/Built%20By-RelayWorks-blue)](https://relayworks.dev/discord-bot)
+
 # V's Friend Bot
 
 V's Friend Bot is a feature-rich, fully asynchronous Discord bot built with `discord.py`. It brings a complete multi-server gambling experience and a dynamic MySQL-powered economy system to your Discord servers.
@@ -56,4 +58,4 @@ The economy shop was built to be completely dynamic and future-proof.
 To add new items or roles to the shop, simply open `cogs/economy.py` and add a new dictionary entry to the `SHOP_ITEMS` configuration at the very top of the file! No logic changes required.
 
 
-[![Built by RelayWorks](https://img.shields.io/badge/Built%20By-RelayWorks-blue)](https://relayworks.dev/discord-bot)
+
