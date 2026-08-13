@@ -21,7 +21,7 @@ class MatchManager:
                     return match
             return None
 
-    async def create_challenge(self, guild_id: int, challenger_id: int, opponent_id: int, game_type: GameType, channel_id: int) -> Tuple[bool, str]:
+    async def create_challenge(self, guild_id: int, challenger_id: int, opponent_id: int, game_type: GameType, channel_id: int, target_score: int = 5) -> Tuple[bool, str]:
         async with self.lock:
             if challenger_id == opponent_id:
                 return False, "You cannot challenge yourself!"
@@ -38,6 +38,8 @@ class MatchManager:
             
             if game_type == GameType.RPS:
                 match.target_score = 3
+            elif game_type == GameType.COLORED_DICE:
+                match.target_score = target_score
                 
             self.pending_challenges[(guild_id, challenger_id)] = match
             return True, "Challenge created."

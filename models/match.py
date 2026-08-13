@@ -6,6 +6,7 @@ class GameType(Enum):
     DICE = "dice"
     COINFLIP = "coinflip"
     RPS = "rps"
+    COLORED_DICE = "colored_dice"
 
 @dataclass
 class Player:

@@ -6,9 +6,10 @@ COLOR_ERROR = 0xED4245
 COLOR_WARNING = 0xFEE75C
 
 def build_challenge_embed(challenger: discord.Member, opponent: discord.Member, game_type: str, target_score: int = 5) -> discord.Embed:
+    formatted_game = game_type.replace("_", " ").title()
     embed = discord.Embed(
-        title=f"🎮 New {game_type.capitalize()} Challenge!",
-        description=f"{challenger.mention} has challenged {opponent.mention} to a **{game_type.capitalize()}** match!\n\n"
+        title=f"🎮 New {formatted_game} Challenge!",
+        description=f"{challenger.mention} has challenged {opponent.mention} to a **{formatted_game}** match!\n\n"
                     f"**First to {target_score} wins.**\n"
                     f"{opponent.mention}, click the buttons below to accept or decline.",
         color=COLOR_DEFAULT
@@ -17,10 +18,23 @@ def build_challenge_embed(challenger: discord.Member, opponent: discord.Member, 
     return embed
 
 def build_match_start_embed(challenger: discord.Member, opponent: discord.Member, game_type: str) -> discord.Embed:
+    formatted_game = game_type.replace("_", " ").title()
+    gt = game_type.lower()
+    if gt == "rps":
+        instruction = "Click the buttons below to play."
+    elif gt == "colored_dice":
+        instruction = "Use `!colordice <color>` to take your turn (e.g. `!colordice red`)."
+    elif gt == "coinflip":
+        instruction = "Use `!coinflip <heads/tails>` to take your turn."
+    elif gt == "dice":
+        instruction = "Use `!dice` to take your turn."
+    else:
+        instruction = "Take your turn!"
+
     embed = discord.Embed(
         title="⚔️ Match Started!",
-        description=f"The **{game_type.capitalize()}** match between {challenger.mention} and {opponent.mention} has begun!\n"
-                    f"{challenger.mention} goes first. Click the buttons below to play.",
+        description=f"The **{formatted_game}** match between {challenger.mention} and {opponent.mention} has begun!\n\n"
+                    f"👉 {instruction}",
         color=COLOR_SUCCESS
     )
     return embed

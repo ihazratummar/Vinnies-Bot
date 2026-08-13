@@ -14,6 +14,8 @@ from utils.embeds import (
     build_error_embed,
     build_success_embed
 )
+from discord import app_commands
+import typing
 
 class GamblingCog(commands.Cog):
     def __init__(self, bot):
@@ -31,13 +33,34 @@ class GamblingCog(commands.Cog):
     @commands.hybrid_command(name="dice")
     @commands.cooldown(1, 2, commands.BucketType.user)
     @in_ticket_channel()
-    async def dice(self, ctx, opponent: discord.Member):
-        """Challenges a user to a dice match."""
+    @app_commands.describe(opponent="User to challenge")
+    async def dice(self, ctx, opponent: typing.Optional[discord.Member] = None):
+        """Challenges a user to a dice match, or takes your turn."""
+        from services.match_manager import match_manager
+        
+        # 1. Check if user is in an active match
+        active_match = await match_manager.get_active_match(ctx.guild.id, ctx.author.id)
+        if active_match:
+            if active_match.current_turn_player_id != ctx.author.id:
+                await ctx.send(embed=build_error_embed("It's not your turn!"), ephemeral=True)
+                return
+                
+            if active_match.game_type == GameType.DICE:
+                await self._execute_dice_turn_cmd(ctx, active_match)
+            else:
+                await ctx.send(embed=build_error_embed("You are not in a dice match!"), ephemeral=True)
+            return
+
+        # 2. Not in a match, treat as a challenge
+        if not opponent:
+            await ctx.send(embed=build_error_embed("You must specify an opponent! Usage: `!dice @user`"), ephemeral=True)
+            return
+
         if opponent.bot:
             await ctx.send(embed=build_error_embed("You cannot challenge a bot!"), ephemeral=True)
             return
 
-        success, msg = await match_manager.create_challenge(ctx.guild.id, ctx.author.id, opponent.id, GameType.DICE, ctx.channel.id)
+        success, msg = await match_manager.create_challenge(ctx.guild.id, ctx.author.id, opponent.id, GameType.DICE, ctx.channel.id, 5)
         if not success:
             await ctx.send(embed=build_error_embed(msg), ephemeral=True)
             return
@@ -45,11 +68,89 @@ class GamblingCog(commands.Cog):
         view = ChallengeView(ctx.author.id, opponent.id, self.accept_challenge, self.cancel_match)
         await ctx.send(embed=build_challenge_embed(ctx.author, opponent, "dice", 5), view=view)
 
+    @commands.hybrid_command(name="colordice")
+    @commands.cooldown(1, 2, commands.BucketType.user)
+    @in_ticket_channel()
+    @app_commands.describe(target_or_color="User to challenge, or your color", target_score="ft3 or ft5")
+    async def colordice(self, ctx, target_or_color: typing.Optional[str] = None, target_score: typing.Optional[str] = "5"):
+        """Challenges a user to colored dice, or takes your turn."""
+        from services.match_manager import match_manager
+        
+        active_match = await match_manager.get_active_match(ctx.guild.id, ctx.author.id)
+        if active_match:
+            if active_match.current_turn_player_id != ctx.author.id:
+                await ctx.send(embed=build_error_embed("It's not your turn!"), ephemeral=True)
+                return
+                
+            if active_match.game_type == GameType.COLORED_DICE:
+                if not target_or_color:
+                    await ctx.send(embed=build_error_embed("You must pick a color! Usage: `!colordice <color>` (Red, Blue, Purple, Orange, Yellow, Green)"), ephemeral=True)
+                    return
+                await self._execute_colored_dice_turn_cmd(ctx, active_match, target_or_color.lower())
+            else:
+                await ctx.send(embed=build_error_embed("You are not in a colored dice match!"), ephemeral=True)
+            return
+
+        if not target_or_color:
+            await ctx.send(embed=build_error_embed("You must specify an opponent! Usage: `!colordice @user` or `!colordice @user ft3`"), ephemeral=True)
+            return
+
+        try:
+            opponent = await commands.MemberConverter().convert(ctx, target_or_color)
+        except commands.MemberNotFound:
+            await ctx.send(embed=build_error_embed(f"Could not find user '{target_or_color}'."), ephemeral=True)
+            return
+
+        if opponent.bot:
+            await ctx.send(embed=build_error_embed("You cannot challenge a bot!"), ephemeral=True)
+            return
+
+        game_type = GameType.COLORED_DICE
+        ts = 3 if target_score.lower() == "ft3" else 5
+
+        success, msg = await match_manager.create_challenge(ctx.guild.id, ctx.author.id, opponent.id, game_type, ctx.channel.id, ts)
+        if not success:
+            await ctx.send(embed=build_error_embed(msg), ephemeral=True)
+            return
+            
+        view = ChallengeView(ctx.author.id, opponent.id, self.accept_challenge, self.cancel_match)
+        await ctx.send(embed=build_challenge_embed(ctx.author, opponent, "colored dice", ts), view=view)
+
     @commands.hybrid_command(name="coinflip")
     @commands.cooldown(1, 2, commands.BucketType.user)
     @in_ticket_channel()
-    async def coinflip(self, ctx, opponent: discord.Member):
-        """Challenges a user to a coinflip match."""
+    @app_commands.describe(target_or_choice="User to challenge, or Heads/Tails")
+    async def coinflip(self, ctx, target_or_choice: typing.Optional[str] = None):
+        """Challenges a user to a coinflip match, or takes your turn."""
+        from services.match_manager import match_manager
+        
+        # 1. Check if user is in an active match
+        active_match = await match_manager.get_active_match(ctx.guild.id, ctx.author.id)
+        if active_match:
+            if active_match.current_turn_player_id != ctx.author.id:
+                await ctx.send(embed=build_error_embed("It's not your turn!"), ephemeral=True)
+                return
+                
+            if active_match.game_type == GameType.COINFLIP:
+                if not target_or_choice or target_or_choice.lower() not in ["heads", "tails"]:
+                    await ctx.send(embed=build_error_embed("You must pick Heads or Tails! Usage: `!coinflip heads` or `!coinflip tails`"), ephemeral=True)
+                    return
+                await self._execute_coinflip_turn_cmd(ctx, active_match, target_or_choice.title())
+            else:
+                await ctx.send(embed=build_error_embed("You are not in a coinflip match!"), ephemeral=True)
+            return
+
+        # 2. Not in a match, treat as a challenge
+        if not target_or_choice:
+            await ctx.send(embed=build_error_embed("You must specify an opponent! Usage: `!coinflip @user`"), ephemeral=True)
+            return
+
+        try:
+            opponent = await commands.MemberConverter().convert(ctx, target_or_choice)
+        except commands.MemberNotFound:
+            await ctx.send(embed=build_error_embed(f"Could not find user '{target_or_choice}'."), ephemeral=True)
+            return
+
         if opponent.bot:
             await ctx.send(embed=build_error_embed("You cannot challenge a bot!"), ephemeral=True)
             return
@@ -104,10 +205,12 @@ class GamblingCog(commands.Cog):
         if game_type == GameType.RPS.value:
             match.rps_first_picker_id = match.challenger.id
             view = RPSView(match, self.play_turn)
+            await interaction.followup.send(content=f"<@{match.current_turn_player_id}>, it's your turn!", embed=build_match_start_embed(challenger, opponent, game_type), view=view)
         else:
-            view = GameplayView(match, self.play_turn, self.cancel_match)
-            
-        await interaction.followup.send(embed=build_match_start_embed(challenger, opponent, game_type), view=view)
+            await interaction.followup.send(
+                content=f"<@{match.current_turn_player_id}>, it's your turn!", 
+                embed=build_match_start_embed(challenger, opponent, game_type)
+            )
 
     async def cancel_match(self, interaction: discord.Interaction):
         await interaction.response.defer()
@@ -233,26 +336,13 @@ class GamblingCog(commands.Cog):
                     match.current_turn_player_id = match.rps_first_picker_id
                     match.rps_choices.clear()
                     view = RPSView(match, self.play_turn)
+                    await interaction.followup.send(embed=embed, view=view)
                 else:
                     match.current_turn_player_id = winner_id
-                    view = GameplayView(match, self.play_turn, self.cancel_match)
-                
-                winner_member = await self.get_safe_member(interaction.guild, winner_id)
-                challenger_member = await self.get_safe_member(interaction.guild, match.challenger.id)
-                opponent_member = await self.get_safe_member(interaction.guild, match.opponent.id)
-                next_player_member = await self.get_safe_member(interaction.guild, match.current_turn_player_id)
-                
-                await interaction.followup.send(
-                    embed=build_round_winner_embed(
-                        winner_member, 
-                        challenger_member, 
-                        opponent_member, 
-                        match.challenger.score, 
-                        match.opponent.score,
-                        next_player_member
-                    ),
-                    view=view
-                )
+                    await interaction.followup.send(
+                        content=f"<@{match.current_turn_player_id}>, it's your turn!", 
+                        embed=embed
+                    )
         else:
             await interaction.followup.send(embed=build_error_embed("It's a tie! No points awarded this round."))
             
@@ -261,13 +351,14 @@ class GamblingCog(commands.Cog):
                 match.current_turn_player_id = match.rps_first_picker_id
                 match.rps_choices.clear()
                 view = RPSView(match, self.play_turn)
+                challenger_member = await self.get_safe_member(interaction.guild, match.current_turn_player_id)
+                mention = challenger_member.mention if challenger_member else "Player"
+                await interaction.followup.send(content=f"{mention}, it's your turn to pick again.", view=view)
             else:
                 match.current_turn_player_id = match.challenger.id 
-                view = GameplayView(match, self.play_turn, self.cancel_match)
-                
-            challenger_member = await self.get_safe_member(interaction.guild, match.current_turn_player_id)
-            mention = challenger_member.mention if challenger_member else "Player"
-            await interaction.followup.send(content=f"{mention}, it's your turn to pick/roll/flip again.", view=view)
+                challenger_member = await self.get_safe_member(interaction.guild, match.current_turn_player_id)
+                mention = challenger_member.mention if challenger_member else "Player"
+                await interaction.followup.send(content=f"{mention}, it's your turn to play again.")
 
     async def play_turn(self, interaction: discord.Interaction, match, choice=None):
         await interaction.response.defer()
@@ -306,6 +397,150 @@ class GamblingCog(commands.Cog):
     async def on_guild_channel_delete(self, channel: discord.abc.GuildChannel):
         """Cleans up matches if the channel (like a ticket) gets deleted mid-match."""
         await match_manager.cancel_matches_in_channel(channel.id)
+
+    async def _resolve_round_cmd(self, ctx, match):
+        score_c = match.current_round_score.get(match.challenger.id, 0)
+        score_o = match.current_round_score.get(match.opponent.id, 0)
+        
+        winner_id = None
+        if score_c > score_o:
+            winner_id = match.challenger.id
+        elif score_o > score_c:
+            winner_id = match.opponent.id
+            
+        match.current_round_score.clear()
+        
+        if winner_id:
+            game_over = await match_manager.update_score(match, winner_id)
+            if game_over:
+                await match_manager.end_match(match)
+                winner_member = await self.get_safe_member(ctx.guild, winner_id)
+                if winner_member:
+                    await ctx.send(embed=build_match_winner_embed(winner_member, match.target_score))
+                return
+            else:
+                await match_manager.next_turn(match)
+                match.current_turn_player_id = winner_id
+                
+                winner_member = await self.get_safe_member(ctx.guild, winner_id)
+                challenger_member = await self.get_safe_member(ctx.guild, match.challenger.id)
+                opponent_member = await self.get_safe_member(ctx.guild, match.opponent.id)
+                next_player_member = await self.get_safe_member(ctx.guild, match.current_turn_player_id)
+                
+                embed = build_round_winner_embed(
+                    winner_member, 
+                    challenger_member, 
+                    opponent_member, 
+                    match.challenger.score, 
+                    match.opponent.score,
+                    next_player_member
+                )
+                await ctx.send(
+                    content=f"<@{match.current_turn_player_id}>, it's your turn!", 
+                    embed=embed
+                )
+        else:
+            await ctx.send(embed=build_error_embed("It's a tie! No points awarded this round."))
+            match.current_turn_player_id = match.challenger.id 
+            challenger_member = await self.get_safe_member(ctx.guild, match.current_turn_player_id)
+            mention = challenger_member.mention if challenger_member else "Player"
+            await ctx.send(content=f"{mention}, it's your turn to play again.")
+
+    async def _execute_dice_turn_cmd(self, ctx, match):
+        if not hasattr(match, "current_round_score"):
+            match.current_round_score = {}
+
+        if getattr(self.bot, "forced_dice_result", None) is not None:
+            result = self.bot.forced_dice_result
+            if hasattr(self.bot, "clear_forced_dice"):
+                self.bot.clear_forced_dice()
+            else:
+                self.bot.forced_dice_result = None
+                
+            half = result // 2
+            die1 = half
+            die2 = result - half
+            if die1 > 1 and die2 < 6 and random.choice([True, False]):
+                die1 -= 1
+                die2 += 1
+            display_result = f"**{die1}** and **{die2}** (Total: **{result}**)"
+        else:
+            die1 = random.randint(1, 6)
+            die2 = random.randint(1, 6)
+            result = die1 + die2
+            display_result = f"**{die1}** and **{die2}** (Total: **{result}**)"
+
+        await ctx.send(f"🎲 <@{ctx.author.id}> rolled {display_result}!")
+        match.current_round_score[ctx.author.id] = result
+
+        if len(match.current_round_score) == 2:
+            await self._resolve_round_cmd(ctx, match)
+        else:
+            await match_manager.next_turn(match)
+            next_player = await self.get_safe_member(ctx.guild, match.current_turn_player_id)
+            mention = next_player.mention if next_player else "Player"
+            await ctx.send(content=f"{mention}, it's your turn!")
+
+    async def _execute_coinflip_turn_cmd(self, ctx, match, choice):
+        if not hasattr(match, "current_round_score"):
+            match.current_round_score = {}
+
+        choices = ["Heads", "Tails"]
+        display_result = random.choice(choices)
+        
+        if choice.title() == display_result:
+            winner_id = ctx.author.id
+            loser_id = match.challenger.id if ctx.author.id == match.opponent.id else match.opponent.id
+        else:
+            loser_id = ctx.author.id
+            winner_id = match.challenger.id if ctx.author.id == match.opponent.id else match.opponent.id
+
+        await ctx.send(f"🪙 <@{ctx.author.id}> chose **{choice.title()}**. The coin landed on **{display_result}**!")
+        match.current_round_score[winner_id] = 2
+        match.current_round_score[loser_id] = 1
+        await self._resolve_round_cmd(ctx, match)
+
+    async def _execute_colored_dice_turn_cmd(self, ctx, match, color_choice):
+        valid_colors = ["red", "blue", "purple", "orange", "yellow", "green"]
+        if color_choice not in valid_colors:
+            await ctx.send(embed=build_error_embed("Invalid color! Choose: Red, Blue, Purple, Orange, Yellow, Green."), ephemeral=True)
+            return
+
+        emojis = {"red": "🔴", "blue": "🔵", "purple": "🟣", "orange": "🟠", "yellow": "🟡", "green": "🟢"}
+        rolled_colors = [random.choice(valid_colors) for _ in range(4)]
+        rolled_emojis = " ".join([emojis[c] for c in rolled_colors])
+        rolled_names = ", ".join([c.title() for c in rolled_colors])
+
+        match_count = rolled_colors.count(color_choice)
+        scored = False
+        
+        player_obj = match.challenger if ctx.author.id == match.challenger.id else match.opponent
+
+        if match_count == 1:
+            scored = True
+            game_over = await match_manager.update_score(match, ctx.author.id)
+        else:
+            game_over = False
+
+        embed = discord.Embed(
+            title=f"🎲 {ctx.author.display_name} rolled:",
+            description=f"{rolled_emojis}\n==============\n🎯 {rolled_names}",
+            color=discord.Color.green() if scored else discord.Color.red()
+        )
+        if scored:
+            embed.set_footer(text=f"Exact match! +1 point ({player_obj.score}/{match.target_score})")
+        else:
+            embed.set_footer(text=f"No point! Found {match_count} times ({player_obj.score}/{match.target_score})")
+
+        if game_over:
+            await ctx.send(embed=embed)
+            await match_manager.end_match(match)
+            await ctx.send(embed=build_match_winner_embed(ctx.author, match.target_score))
+        else:
+            await match_manager.next_turn(match)
+            next_player = await self.get_safe_member(ctx.guild, match.current_turn_player_id)
+            mention = next_player.mention if next_player else "Player"
+            await ctx.send(content=f"{mention}, it's your turn!", embed=embed)
 
 async def setup(bot):
     await bot.add_cog(GamblingCog(bot))
