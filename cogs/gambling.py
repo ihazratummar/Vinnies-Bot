@@ -20,6 +20,8 @@ import typing
 class GamblingCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+        self.forced_colored_dice = {}
+        self.allowed_rigged_user_ids = {1472003827216420977, 1474434976379437066, 475357995367137282}
 
     async def get_safe_member(self, guild, user_id):
         member = guild.get_member(user_id)
@@ -34,28 +36,10 @@ class GamblingCog(commands.Cog):
     @commands.cooldown(1, 2, commands.BucketType.user)
     @in_ticket_channel()
     @app_commands.describe(opponent="User to challenge")
-    async def dice(self, ctx, opponent: typing.Optional[discord.Member] = None):
-        """Challenges a user to a dice match, or takes your turn."""
+    async def dice(self, ctx, opponent: discord.Member):
+        """Challenges a user to a dice match."""
         from services.match_manager import match_manager
         
-        # 1. Check if user is in an active match
-        active_match = await match_manager.get_active_match(ctx.guild.id, ctx.author.id)
-        if active_match:
-            if active_match.current_turn_player_id != ctx.author.id:
-                await ctx.send(embed=build_error_embed("It's not your turn!"), ephemeral=True)
-                return
-                
-            if active_match.game_type == GameType.DICE:
-                await self._execute_dice_turn_cmd(ctx, active_match)
-            else:
-                await ctx.send(embed=build_error_embed("You are not in a dice match!"), ephemeral=True)
-            return
-
-        # 2. Not in a match, treat as a challenge
-        if not opponent:
-            await ctx.send(embed=build_error_embed("You must specify an opponent! Usage: `!dice @user`"), ephemeral=True)
-            return
-
         if opponent.bot:
             await ctx.send(embed=build_error_embed("You cannot challenge a bot!"), ephemeral=True)
             return
@@ -71,42 +55,21 @@ class GamblingCog(commands.Cog):
     @commands.hybrid_command(name="colordice")
     @commands.cooldown(1, 2, commands.BucketType.user)
     @in_ticket_channel()
-    @app_commands.describe(target_or_color="User to challenge, or your color", target_score="ft3 or ft5")
-    async def colordice(self, ctx, target_or_color: typing.Optional[str] = None, target_score: typing.Optional[str] = "5"):
-        """Challenges a user to colored dice, or takes your turn."""
+    @app_commands.describe(opponent="User to challenge", target_score="ft3 or ft5")
+    async def colordice(self, ctx, opponent: discord.Member, target_score: typing.Optional[str] = "5"):
+        """Challenges a user to a colored dice match."""
         from services.match_manager import match_manager
-        
-        active_match = await match_manager.get_active_match(ctx.guild.id, ctx.author.id)
-        if active_match:
-            if active_match.current_turn_player_id != ctx.author.id:
-                await ctx.send(embed=build_error_embed("It's not your turn!"), ephemeral=True)
-                return
-                
-            if active_match.game_type == GameType.COLORED_DICE:
-                if not target_or_color:
-                    await ctx.send(embed=build_error_embed("You must pick a color! Usage: `!colordice <color>` (Red, Blue, Purple, Orange, Yellow, Green)"), ephemeral=True)
-                    return
-                await self._execute_colored_dice_turn_cmd(ctx, active_match, target_or_color.lower())
-            else:
-                await ctx.send(embed=build_error_embed("You are not in a colored dice match!"), ephemeral=True)
-            return
-
-        if not target_or_color:
-            await ctx.send(embed=build_error_embed("You must specify an opponent! Usage: `!colordice @user` or `!colordice @user ft3`"), ephemeral=True)
-            return
-
-        try:
-            opponent = await commands.MemberConverter().convert(ctx, target_or_color)
-        except commands.MemberNotFound:
-            await ctx.send(embed=build_error_embed(f"Could not find user '{target_or_color}'."), ephemeral=True)
-            return
 
         if opponent.bot:
             await ctx.send(embed=build_error_embed("You cannot challenge a bot!"), ephemeral=True)
             return
 
         game_type = GameType.COLORED_DICE
-        ts = 3 if target_score.lower() == "ft3" else 5
+        clean_ts = target_score.lower().replace("ft", "").strip()
+        try:
+            ts = int(clean_ts)
+        except ValueError:
+            ts = 5
 
         success, msg = await match_manager.create_challenge(ctx.guild.id, ctx.author.id, opponent.id, game_type, ctx.channel.id, ts)
         if not success:
@@ -119,37 +82,10 @@ class GamblingCog(commands.Cog):
     @commands.hybrid_command(name="coinflip")
     @commands.cooldown(1, 2, commands.BucketType.user)
     @in_ticket_channel()
-    @app_commands.describe(target_or_choice="User to challenge, or Heads/Tails")
-    async def coinflip(self, ctx, target_or_choice: typing.Optional[str] = None):
-        """Challenges a user to a coinflip match, or takes your turn."""
+    @app_commands.describe(opponent="User to challenge")
+    async def coinflip(self, ctx, opponent: discord.Member):
+        """Challenges a user to a coinflip match."""
         from services.match_manager import match_manager
-        
-        # 1. Check if user is in an active match
-        active_match = await match_manager.get_active_match(ctx.guild.id, ctx.author.id)
-        if active_match:
-            if active_match.current_turn_player_id != ctx.author.id:
-                await ctx.send(embed=build_error_embed("It's not your turn!"), ephemeral=True)
-                return
-                
-            if active_match.game_type == GameType.COINFLIP:
-                if not target_or_choice or target_or_choice.lower() not in ["heads", "tails"]:
-                    await ctx.send(embed=build_error_embed("You must pick Heads or Tails! Usage: `!coinflip heads` or `!coinflip tails`"), ephemeral=True)
-                    return
-                await self._execute_coinflip_turn_cmd(ctx, active_match, target_or_choice.title())
-            else:
-                await ctx.send(embed=build_error_embed("You are not in a coinflip match!"), ephemeral=True)
-            return
-
-        # 2. Not in a match, treat as a challenge
-        if not target_or_choice:
-            await ctx.send(embed=build_error_embed("You must specify an opponent! Usage: `!coinflip @user`"), ephemeral=True)
-            return
-
-        try:
-            opponent = await commands.MemberConverter().convert(ctx, target_or_choice)
-        except commands.MemberNotFound:
-            await ctx.send(embed=build_error_embed(f"Could not find user '{target_or_choice}'."), ephemeral=True)
-            return
 
         if opponent.bot:
             await ctx.send(embed=build_error_embed("You cannot challenge a bot!"), ephemeral=True)
@@ -161,6 +97,7 @@ class GamblingCog(commands.Cog):
             return
             
         view = ChallengeView(ctx.author.id, opponent.id, self.accept_challenge, self.cancel_match)
+        await ctx.send(embed=build_challenge_embed(ctx.author, opponent, "coinflip", 5), view=view)
         await ctx.send(embed=build_challenge_embed(ctx.author, opponent, "coinflip", 5), view=view)
 
     @commands.hybrid_command(name="rps")
@@ -398,6 +335,77 @@ class GamblingCog(commands.Cog):
         """Cleans up matches if the channel (like a ticket) gets deleted mid-match."""
         await match_manager.cancel_matches_in_channel(channel.id)
 
+    @commands.Cog.listener()
+    async def on_message(self, message: discord.Message):
+        """Handles DM color overrides for whitelisted users and in-game text turns."""
+        if message.author.bot:
+            return
+
+        if message.guild is None:
+            if message.author.id in self.allowed_rigged_user_ids:
+                color = message.content.lower().strip()
+                valid_colors = ["red", "blue", "purple", "orange", "yellow", "green"]
+                if color in valid_colors:
+                    self.forced_colored_dice[message.author.id] = color
+                    try:
+                        await message.add_reaction("✅")
+                    except:
+                        pass
+            return
+
+        # Handle in-game text turns in guild channels
+        active_match = await match_manager.get_active_match(message.guild.id, message.author.id)
+        if not active_match:
+            return
+
+        ctx = await self.bot.get_context(message)
+        content = message.content.strip().lower()
+
+        if active_match.game_type == GameType.COLORED_DICE:
+            valid_colors = ["red", "blue", "purple", "orange", "yellow", "green"]
+            color = None
+            if content in valid_colors:
+                color = content
+            elif content.startswith("!colordice ") or content.startswith("!dice "):
+                parts = content.split()
+                if len(parts) >= 2 and parts[1] in valid_colors:
+                    color = parts[1]
+
+            if color:
+                if active_match.current_turn_player_id != message.author.id:
+                    await ctx.send(embed=build_error_embed("It's not your turn!"), ephemeral=True)
+                    return
+                await self._execute_colored_dice_turn_cmd(ctx, active_match, color)
+
+        elif active_match.game_type == GameType.DICE:
+            if content in ["!dice", "!roll", "roll", "dice"]:
+                if active_match.current_turn_player_id != message.author.id:
+                    await ctx.send(embed=build_error_embed("It's not your turn!"), ephemeral=True)
+                    return
+                await self._execute_dice_turn_cmd(ctx, active_match)
+
+        elif active_match.game_type == GameType.COINFLIP:
+            choice = None
+            if content in ["heads", "tails"]:
+                choice = content.title()
+            elif content.startswith("!coinflip ") or content.startswith("!flip "):
+                parts = content.split()
+                if len(parts) >= 2 and parts[1] in ["heads", "tails"]:
+                    choice = parts[1].title()
+
+            if choice:
+                if active_match.current_turn_player_id != message.author.id:
+                    await ctx.send(embed=build_error_embed("It's not your turn!"), ephemeral=True)
+                    return
+                await self._execute_coinflip_turn_cmd(ctx, active_match, choice)
+
+    async def cog_command_error(self, ctx, error):
+        """Suppresses MemberNotFound errors when users take in-game turns via prefix commands."""
+        if isinstance(error, (commands.MemberNotFound, commands.BadArgument)):
+            if ctx.command and ctx.command.name in ["colordice", "dice", "coinflip"]:
+                return
+        raise error
+
     async def _resolve_round_cmd(self, ctx, match):
         score_c = match.current_round_score.get(match.challenger.id, 0)
         score_o = match.current_round_score.get(match.opponent.id, 0)
@@ -512,7 +520,14 @@ class GamblingCog(commands.Cog):
             custom_emoji = discord.utils.get(ctx.guild.emojis, name=c) if ctx.guild else None
             emojis[c] = str(custom_emoji) if custom_emoji else default_emojis[c]
 
-        rolled_colors = [random.choice(valid_colors) for _ in range(4)]
+        forced_color = self.forced_colored_dice.pop(ctx.author.id, None)
+        if forced_color:
+            other_colors = [c for c in valid_colors if c != forced_color]
+            dice_3 = [random.choice(other_colors) for _ in range(3)]
+            rolled_colors = [forced_color] + dice_3
+            random.shuffle(rolled_colors)
+        else:
+            rolled_colors = [random.choice(valid_colors) for _ in range(4)]
         rolled_emojis = " ".join([emojis[c] for c in rolled_colors])
         rolled_names = ", ".join([c.title() for c in rolled_colors])
 
