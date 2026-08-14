@@ -506,7 +506,12 @@ class GamblingCog(commands.Cog):
             await ctx.send(embed=build_error_embed("Invalid color! Choose: Red, Blue, Purple, Orange, Yellow, Green."), ephemeral=True)
             return
 
-        emojis = {"red": "🔴", "blue": "🔵", "purple": "🟣", "orange": "🟠", "yellow": "🟡", "green": "🟢"}
+        default_emojis = {"red": "🔴", "blue": "🔵", "purple": "🟣", "orange": "🟠", "yellow": "🟡", "green": "🟢"}
+        emojis = {}
+        for c in valid_colors:
+            custom_emoji = discord.utils.get(ctx.guild.emojis, name=c) if ctx.guild else None
+            emojis[c] = str(custom_emoji) if custom_emoji else default_emojis[c]
+
         rolled_colors = [random.choice(valid_colors) for _ in range(4)]
         rolled_emojis = " ".join([emojis[c] for c in rolled_colors])
         rolled_names = ", ".join([c.title() for c in rolled_colors])
