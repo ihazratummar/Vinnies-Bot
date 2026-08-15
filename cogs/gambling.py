@@ -268,6 +268,20 @@ class GamblingCog(commands.Cog):
             else:
                 await match_manager.next_turn(match)
                 
+                winner_member = await self.get_safe_member(interaction.guild, winner_id)
+                challenger_member = await self.get_safe_member(interaction.guild, match.challenger.id)
+                opponent_member = await self.get_safe_member(interaction.guild, match.opponent.id)
+                next_player_member = await self.get_safe_member(interaction.guild, match.current_turn_player_id)
+                
+                embed = build_round_winner_embed(
+                    winner_member, 
+                    challenger_member, 
+                    opponent_member, 
+                    match.challenger.score, 
+                    match.opponent.score,
+                    next_player_member
+                )
+
                 if match.game_type == GameType.RPS:
                     match.rps_first_picker_id = match.opponent.id if match.rps_first_picker_id == match.challenger.id else match.challenger.id
                     match.current_turn_player_id = match.rps_first_picker_id

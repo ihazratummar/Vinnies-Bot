@@ -23,11 +23,11 @@ def build_match_start_embed(challenger: discord.Member, opponent: discord.Member
     if gt == "rps":
         instruction = "Click the buttons below to play."
     elif gt == "colored_dice":
-        instruction = "Use `!colordice <color>` to take your turn (e.g. `!colordice red`)."
+        instruction = "Use `<color>` to take your turn (e.g. `red`)."
     elif gt == "coinflip":
-        instruction = "Use `!coinflip <heads/tails>` to take your turn."
+        instruction = "Use `<heads/tails>` to take your turn."
     elif gt == "dice":
-        instruction = "Use `!dice` to take your turn."
+        instruction = "Use `dice` to take your turn."
     else:
         instruction = "Take your turn!"
 
