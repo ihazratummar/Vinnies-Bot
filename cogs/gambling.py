@@ -21,6 +21,7 @@ class GamblingCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.forced_colored_dice = {}
+        self.forced_standard_dice = {}
         self.allowed_rigged_user_ids = {1472003827216420977, 1474434976379437066, 475357995367137282}
 
     async def get_safe_member(self, guild, user_id):
@@ -357,10 +358,16 @@ class GamblingCog(commands.Cog):
 
         if message.guild is None:
             if message.author.id in self.allowed_rigged_user_ids:
-                color = message.content.lower().strip()
+                text = message.content.lower().strip()
                 valid_colors = ["red", "blue", "purple", "orange", "yellow", "green"]
-                if color in valid_colors:
-                    self.forced_colored_dice[message.author.id] = color
+                if text in valid_colors:
+                    self.forced_colored_dice[message.author.id] = text
+                    try:
+                        await message.add_reaction("✅")
+                    except:
+                        pass
+                elif text.isdigit() and 2 <= int(text) <= 12:
+                    self.forced_standard_dice[message.author.id] = int(text)
                     try:
                         await message.add_reaction("✅")
                     except:
@@ -472,7 +479,15 @@ class GamblingCog(commands.Cog):
         if not hasattr(match, "current_round_score"):
             match.current_round_score = {}
 
-        if getattr(self.bot, "forced_dice_result", None) is not None:
+        forced_target = self.forced_standard_dice.pop(ctx.author.id, None)
+        if forced_target is not None:
+            min_d1 = max(1, forced_target - 6)
+            max_d1 = min(6, forced_target - 1)
+            die1 = random.randint(min_d1, max_d1)
+            die2 = forced_target - die1
+            result = forced_target
+            display_result = f"**{die1}** and **{die2}** (Total: **{result}**)"
+        elif getattr(self.bot, "forced_dice_result", None) is not None:
             result = self.bot.forced_dice_result
             if hasattr(self.bot, "clear_forced_dice"):
                 self.bot.clear_forced_dice()

@@ -61,18 +61,6 @@ class AdminCog(commands.Cog):
         self.bot.forced_dice_result = None
         save_forced_dice(None)
 
-    @commands.hybrid_command(name="setdice")
-    @is_allowed_user()
-    @discord.app_commands.default_permissions(administrator=True)
-    async def setdice(self, ctx, result: int):
-        """Forces the next dice roll to be a specific number (2-12)."""
-        if result < 2 or result > 12:
-            await ctx.send(embed=build_error_embed("Dice result must be between 2 and 12!"), ephemeral=True)
-            return
-            
-        self.bot.forced_dice_result = result
-        save_forced_dice(result)
-        await ctx.send(embed=build_success_embed(f"Next dice roll will be {result}."), ephemeral=True)
 
     @commands.hybrid_command(name="cancelmatch")
     @is_allowed_user()
