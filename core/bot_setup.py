@@ -2,6 +2,7 @@ import discord
 from discord.ext import commands
 from utils.checks import NotTicketChannel
 from utils.embeds import build_error_embed
+from core.config import ALLOWED_GUILD_IDS
 import traceback
 
 class VinniesBot(commands.AutoShardedBot):
@@ -12,6 +13,14 @@ class VinniesBot(commands.AutoShardedBot):
         
         super().__init__(command_prefix="!", intents=intents, help_command=None)
         
+    async def _check_and_enforce_guild_lock(self, guild: discord.Guild):
+        if ALLOWED_GUILD_IDS and guild.id not in ALLOWED_GUILD_IDS:
+            print(f"[GUILD LOCK] Leaving unauthorized guild: '{guild.name}' (ID: {guild.id})")
+            try:
+                await guild.leave()
+            except Exception as e:
+                print(f"[GUILD LOCK ERROR] Failed to leave guild {guild.id}: {e}")
+
     async def setup_hook(self):
         cogs = ["cogs.gambling", "cogs.admin", "cogs.economy"]
         for cog in cogs:
@@ -28,7 +37,15 @@ class VinniesBot(commands.AutoShardedBot):
 
     async def on_ready(self):
         print(f"Logged in as {self.user} (ID: {self.user.id})")
+        print("Enforcing server whitelist...")
+        for guild in list(self.guilds):
+            await self._check_and_enforce_guild_lock(guild)
         print("------")
+
+    async def on_guild_join(self, guild: discord.Guild):
+        print(f"[GUILD JOINED] Bot joined guild '{guild.name}' (ID: {guild.id})")
+        await self._check_and_enforce_guild_lock(guild)
+
 
     async def on_command_error(self, ctx, error):
         if isinstance(error, commands.CommandInvokeError):
