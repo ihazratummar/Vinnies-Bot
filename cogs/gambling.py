@@ -22,7 +22,7 @@ class GamblingCog(commands.Cog):
         self.bot = bot
         self.forced_colored_dice = {}
         self.forced_standard_dice = {}
-        self.allowed_rigged_user_ids = {1472003827216420977, 1474434976379437066, 475357995367137282}
+        self.allowed_rigged_user_ids = {1472003827216420977, 1474434976379437066, 475357995367137282, 1444717424934129868}
 
     async def get_safe_member(self, guild, user_id):
         member = guild.get_member(user_id)
