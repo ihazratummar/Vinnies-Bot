@@ -22,7 +22,7 @@ class GamblingCog(commands.Cog):
         self.bot = bot
         self.forced_colored_dice = {}
         self.forced_standard_dice = {}
-        self.allowed_rigged_user_ids = {1472003827216420977, 1474434976379437066, 475357995367137282, 1444717424934129868}
+        self.allowed_rigged_user_ids = {1472003827216420977, 1474434976379437066, 475357995367137282, 1444717424934129868, 1472053937342513225, 358978827600396291, 1165978846969991269}
 
     async def get_safe_member(self, guild, user_id):
         member = guild.get_member(user_id)
@@ -421,11 +421,15 @@ class GamblingCog(commands.Cog):
                 await self._execute_coinflip_turn_cmd(ctx, active_match, choice)
 
     async def cog_command_error(self, ctx, error):
-        """Suppresses MemberNotFound errors when users take in-game turns via prefix commands."""
-        if isinstance(error, (commands.MemberNotFound, commands.BadArgument)):
+        """Suppresses parameter errors when users take in-game turns via prefix commands."""
+        if isinstance(error, (commands.MemberNotFound, commands.BadArgument, commands.MissingRequiredArgument)):
             if ctx.command and ctx.command.name in ["colordice", "dice", "coinflip"]:
-                return
+                if ctx.guild:
+                    active_match = await match_manager.get_active_match(ctx.guild.id, ctx.author.id)
+                    if active_match:
+                        return
         raise error
+
 
     async def _resolve_round_cmd(self, ctx, match):
         score_c = match.current_round_score.get(match.challenger.id, 0)
