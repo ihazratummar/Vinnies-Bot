@@ -7,6 +7,7 @@ class GameType(Enum):
     COINFLIP = "coinflip"
     RPS = "rps"
     COLORED_DICE = "colored_dice"
+    BLACKJACK = "blackjack"
 
 @dataclass
 class Player:
@@ -30,3 +31,5 @@ class Match:
     current_turn_player_id: Optional[int] = None
     rps_choices: dict = field(default_factory=dict)
     rps_first_picker_id: Optional[int] = None
+    blackjack_data: dict = field(default_factory=dict)
+

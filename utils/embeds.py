@@ -26,6 +26,8 @@ def build_match_start_embed(challenger: discord.Member, opponent: discord.Member
         instruction = "Use `<color>` to take your turn (e.g. `red`)."
     elif gt == "coinflip":
         instruction = "Use `<heads/tails>` to take your turn."
+    elif gt == "blackjack":
+        instruction = "Click **Hit** to draw or **Stand** to hold your hand (or type `hit` / `stand`)."
     elif gt == "dice":
         instruction = "Use `dice` to take your turn."
     else:
@@ -38,6 +40,87 @@ def build_match_start_embed(challenger: discord.Member, opponent: discord.Member
         color=COLOR_SUCCESS
     )
     return embed
+
+def format_hand_display(cards: list, reveal: bool = True) -> tuple:
+    """Returns (cards_str, total_str, raw_total)"""
+    if not cards:
+        return "*No cards*", "0", 0
+        
+    if not reveal and len(cards) >= 2:
+        c1 = cards[0]
+        displayed = f"[`{c1[0]}{c1[1]}`] [` 🂠 ? `]"
+        first_val = 10 if c1[0] in ("J", "Q", "K") else (11 if c1[0] == "A" else int(c1[0]))
+        return displayed, f"**{first_val} + ?**", first_val
+
+    displayed = " ".join([f"[`{r}{s}`]" for r, s in cards])
+    total = 0
+    aces = 0
+    for r, _ in cards:
+        if r in ("J", "Q", "K"):
+            total += 10
+        elif r == "A":
+            total += 11
+            aces += 1
+        else:
+            total += int(r)
+    while total > 21 and aces > 0:
+        total -= 10
+        aces -= 1
+
+    if total > 21:
+        total_str = f"💥 **BUST ({total})**"
+    elif total == 21 and len(cards) == 2:
+        total_str = "✨ **BLACKJACK! (21)**"
+    else:
+        total_str = f"**{total}**"
+
+    return displayed, total_str, total
+
+def build_blackjack_embed(
+    challenger: discord.Member,
+    opponent: discord.Member,
+    challenger_cards: list,
+    opponent_cards: list,
+    c_score: int,
+    o_score: int,
+    target_score: int,
+    current_turn_member: discord.Member = None,
+    reveal_challenger: bool = True,
+    reveal_opponent: bool = False,
+    note: str = None,
+    color: int = COLOR_DEFAULT
+) -> discord.Embed:
+    embed = discord.Embed(
+        title="🃏 1v1 Blackjack Table",
+        color=color
+    )
+    
+    c_cards_str, c_total_str, _ = format_hand_display(challenger_cards, reveal=reveal_challenger)
+    o_cards_str, o_total_str, _ = format_hand_display(opponent_cards, reveal=reveal_opponent)
+
+    
+    desc_lines = []
+    if note:
+        desc_lines.append(f"{note}\n")
+    if current_turn_member:
+        desc_lines.append(f"👉 **Turn:** {current_turn_member.mention} — Choose **Hit** or **Stand**")
+    if desc_lines:
+        embed.description = "\n".join(desc_lines)
+
+    embed.add_field(
+        name=f"👤 {challenger.display_name} (Score: {c_score}/{target_score})",
+        value=f"**Cards:** {c_cards_str}\n**Total:** {c_total_str}",
+        inline=False
+    )
+    embed.add_field(
+        name=f"👤 {opponent.display_name} (Score: {o_score}/{target_score})",
+        value=f"**Cards:** {o_cards_str}\n**Total:** {o_total_str}",
+        inline=False
+    )
+
+    embed.set_footer(text=f"First to {target_score} wins! • Click buttons below or type 'hit' / 'stand'")
+    return embed
+
 
 def build_turn_result_embed(player: discord.Member, result: str) -> discord.Embed:
     embed = discord.Embed(

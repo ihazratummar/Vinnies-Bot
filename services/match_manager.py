@@ -38,8 +38,9 @@ class MatchManager:
             
             if game_type == GameType.RPS:
                 match.target_score = 3
-            elif game_type == GameType.COLORED_DICE:
+            elif game_type in (GameType.COLORED_DICE, GameType.BLACKJACK):
                 match.target_score = target_score
+
                 
             self.pending_challenges[(guild_id, challenger_id)] = match
             return True, "Challenge created."

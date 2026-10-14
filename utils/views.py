@@ -156,3 +156,26 @@ class RPSView(discord.ui.View):
                 return
             await self.action_callback(interaction, self.match, choice=choice_str)
         return callback
+
+class BlackjackView(discord.ui.View):
+    def __init__(self, match, action_callback):
+        super().__init__(timeout=None)
+        self.match = match
+        self.action_callback = action_callback
+
+        hit_btn = discord.ui.Button(label="Hit", style=discord.ButtonStyle.success, custom_id="btn_bj_hit", emoji="🃏")
+        hit_btn.callback = self._make_callback("hit")
+        self.add_item(hit_btn)
+
+        stand_btn = discord.ui.Button(label="Stand", style=discord.ButtonStyle.danger, custom_id="btn_bj_stand", emoji="🛑")
+        stand_btn.callback = self._make_callback("stand")
+        self.add_item(stand_btn)
+
+    def _make_callback(self, action_str: str):
+        async def callback(interaction: discord.Interaction):
+            if interaction.user.id != self.match.current_turn_player_id:
+                await interaction.response.send_message(embed=build_error_embed("It's not your turn!"), ephemeral=True)
+                return
+            await self.action_callback(interaction, self.match, action=action_str)
+        return callback
+
