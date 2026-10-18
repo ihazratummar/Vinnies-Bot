@@ -6,6 +6,14 @@ from models.match import GameType
 from services.match_manager import match_manager
 from utils.checks import in_ticket_channel
 from utils.views import ChallengeView, GameplayView, RPSView, BlackjackView
+from utils.layout_views import (
+    ChallengeLayoutView,
+    DiceGameplayLayoutView,
+    DiceRoundResultLayoutView,
+    CoinflipGameplayLayoutView,
+    BlackjackLayoutView,
+    MatchWinnerLayoutView
+)
 from utils.embeds import (
     build_challenge_embed,
     build_match_start_embed,
@@ -59,8 +67,8 @@ class GamblingCog(commands.Cog):
             await ctx.send(embed=build_error_embed(msg), ephemeral=True)
             return
             
-        view = ChallengeView(ctx.author.id, opponent.id, self.accept_challenge, self.cancel_match)
-        await ctx.send(embed=build_challenge_embed(ctx.author, opponent, "dice", 5), view=view)
+        view = ChallengeLayoutView(ctx.author, opponent, "dice", 5, self.accept_challenge, self.cancel_match)
+        await ctx.send(view=view)
 
     @commands.hybrid_command(name="colordice")
     @commands.cooldown(1, 2, commands.BucketType.user)
@@ -86,8 +94,8 @@ class GamblingCog(commands.Cog):
             await ctx.send(embed=build_error_embed(msg), ephemeral=True)
             return
             
-        view = ChallengeView(ctx.author.id, opponent.id, self.accept_challenge, self.cancel_match)
-        await ctx.send(embed=build_challenge_embed(ctx.author, opponent, "colored dice", ts), view=view)
+        view = ChallengeLayoutView(ctx.author, opponent, "colored dice", ts, self.accept_challenge, self.cancel_match)
+        await ctx.send(view=view)
 
     @commands.hybrid_command(name="coinflip")
     @commands.cooldown(1, 2, commands.BucketType.user)
@@ -106,8 +114,8 @@ class GamblingCog(commands.Cog):
             await ctx.send(embed=build_error_embed(msg), ephemeral=True)
             return
             
-        view = ChallengeView(ctx.author.id, opponent.id, self.accept_challenge, self.cancel_match)
-        await ctx.send(embed=build_challenge_embed(ctx.author, opponent, "coinflip", 5), view=view)
+        view = ChallengeLayoutView(ctx.author, opponent, "coinflip", 5, self.accept_challenge, self.cancel_match)
+        await ctx.send(view=view)
 
     @commands.hybrid_command(name="blackjack", aliases=["bj"])
     @commands.cooldown(1, 2, commands.BucketType.user)
@@ -132,8 +140,8 @@ class GamblingCog(commands.Cog):
             await ctx.send(embed=build_error_embed(msg), ephemeral=True)
             return
 
-        view = ChallengeView(ctx.author.id, opponent.id, self.accept_challenge, self.cancel_match)
-        await ctx.send(embed=build_challenge_embed(ctx.author, opponent, "blackjack", ts), view=view)
+        view = ChallengeLayoutView(ctx.author, opponent, "blackjack", ts, self.accept_challenge, self.cancel_match)
+        await ctx.send(view=view)
 
     @commands.hybrid_command(name="rps", enabled=False)
     @commands.cooldown(1, 2, commands.BucketType.user)
@@ -141,6 +149,99 @@ class GamblingCog(commands.Cog):
     async def rps(self, ctx, opponent: discord.Member):
         """(Disabled) Challenges a user to a Rock Paper Scissors match."""
         await ctx.send(embed=build_error_embed("Rock Paper Scissors is currently disabled!"), ephemeral=True)
+
+    @commands.hybrid_command(name="testlayout")
+    @app_commands.describe(layout_type="Choose which Component v2 layout to preview")
+    @app_commands.choices(layout_type=[
+        app_commands.Choice(name="Dice (Option A: Inline Roll Button)", value="dice_inline"),
+        app_commands.Choice(name="Dice (Option B: Bottom Action Row)", value="dice_row"),
+        app_commands.Choice(name="Dice Round Result (Winner & Next Round)", value="dice_result"),
+        app_commands.Choice(name="Challenge Invitation Card", value="challenge"),
+        app_commands.Choice(name="Coinflip (Compact Buttons)", value="coinflip"),
+        app_commands.Choice(name="Match Winner Celebration", value="winner"),
+    ])
+    async def testlayout(self, ctx, layout_type: str = "dice_inline"):
+        """Preview Discord Components v2 (LayoutView) in the channel."""
+        from models.match import Match, Player, GameType
+
+        dummy_match = Match(
+            challenger=Player(id=ctx.author.id, score=1),
+            opponent=Player(id=self.bot.user.id, score=0),
+            game_type=GameType.DICE,
+            channel_id=ctx.channel.id,
+            guild_id=ctx.guild.id,
+            target_score=3,
+            current_turn_player_id=ctx.author.id,
+            round_num=2
+        )
+
+        bot_member = ctx.guild.me if ctx.guild else ctx.author
+
+        if layout_type == "dice_inline":
+            view = DiceGameplayLayoutView(
+                match=dummy_match,
+                c_member=ctx.author,
+                o_member=bot_member,
+                current_turn_member=ctx.author,
+                action_cb=lambda inter, m, choice: inter.response.send_message("🎲 You rolled a 6!", ephemeral=True),
+                prev_roll_text=f"🎲 **{bot_member.display_name}** rolled **3** and **2** (Total: **5**)",
+                button_style="inline"
+            )
+            await ctx.send(view=view)
+        elif layout_type == "dice_row":
+            view = DiceGameplayLayoutView(
+                match=dummy_match,
+                c_member=ctx.author,
+                o_member=bot_member,
+                current_turn_member=ctx.author,
+                action_cb=lambda inter, m, choice: inter.response.send_message("🎲 You rolled a 6!", ephemeral=True),
+                prev_roll_text=f"🎲 **{bot_member.display_name}** rolled **3** and **2** (Total: **5**)",
+                button_style="actionrow"
+            )
+            await ctx.send(view=view)
+        elif layout_type == "dice_result":
+            view = DiceRoundResultLayoutView(
+                match=dummy_match,
+                c_member=ctx.author,
+                o_member=bot_member,
+                c_result_str="**5** and **6** (Total: **11**)",
+                o_result_str="**2** and **3** (Total: **5**)",
+                winner_member=ctx.author,
+                next_turn_member=ctx.author,
+                action_cb=lambda inter, m, choice: inter.response.send_message("Starting next round...", ephemeral=True)
+            )
+            await ctx.send(view=view)
+        elif layout_type == "challenge":
+            view = ChallengeLayoutView(
+                challenger=ctx.author,
+                opponent=bot_member,
+                game_type="dice",
+                target_score=3,
+                accept_cb=lambda inter: inter.response.send_message("Accepted!", ephemeral=True),
+                decline_cb=lambda inter: inter.response.send_message("Declined!", ephemeral=True)
+            )
+            await ctx.send(view=view)
+        elif layout_type == "coinflip":
+            dummy_match.game_type = GameType.COINFLIP
+            view = CoinflipGameplayLayoutView(
+                match=dummy_match,
+                c_member=ctx.author,
+                o_member=bot_member,
+                current_turn_member=ctx.author,
+                action_cb=lambda inter, m, choice: inter.response.send_message(f"Flipped: {choice}!", ephemeral=True),
+                prev_flip_text=f"🪙 **{bot_member.display_name}** called **Heads**. Result: **Tails**!"
+            )
+            await ctx.send(view=view)
+        elif layout_type == "winner":
+            view = MatchWinnerLayoutView(
+                winner=ctx.author,
+                target_score=3,
+                game_name="dice",
+                note="🎲 Final roll: **Hazrat** rolled **6** and **5** (Total: **11**)"
+            )
+            await ctx.send(view=view)
+        else:
+            await ctx.send("Unknown layout type!")
 
     async def accept_challenge(self, interaction: discord.Interaction):
         await interaction.response.defer()
@@ -170,6 +271,14 @@ class GamblingCog(commands.Cog):
             await interaction.followup.send(content=f"<@{match.current_turn_player_id}>, it's your turn!", embed=build_match_start_embed(challenger, opponent, game_type), view=view)
         elif game_type == GameType.BLACKJACK.value:
             await self._start_blackjack_round(interaction, match)
+        elif game_type == GameType.DICE.value:
+            match.round_num = 1
+            view = DiceGameplayLayoutView(match, challenger, opponent, challenger, self.play_turn)
+            await interaction.followup.send(view=view)
+        elif game_type == GameType.COINFLIP.value:
+            match.round_num = 1
+            view = CoinflipGameplayLayoutView(match, challenger, opponent, challenger, self.play_turn)
+            await interaction.followup.send(view=view)
         else:
             view = GameplayView(match, self.play_turn, self.cancel_match)
             await interaction.followup.send(
@@ -220,7 +329,9 @@ class GamblingCog(commands.Cog):
             result = die1 + die2
             display_result = f"**{die1}** and **{die2}** (Total: **{result}**)"
 
-        await interaction.followup.send(embed=build_turn_result_embed(interaction.user, display_result))
+        if not hasattr(match, "last_rolls"):
+            match.last_rolls = {}
+        match.last_rolls[interaction.user.id] = display_result
         match.current_round_score[interaction.user.id] = result
         return len(match.current_round_score) == 2
 
@@ -235,7 +346,7 @@ class GamblingCog(commands.Cog):
             loser_id = interaction.user.id
             winner_id = match.challenger.id if interaction.user.id == match.opponent.id else match.opponent.id
 
-        await interaction.followup.send(embed=build_turn_result_embed(interaction.user, f"You chose **{choice}**. The coin landed on **{display_result}**!"))
+        match.last_flip_text = f"🪙 **{interaction.user.display_name}** chose **{choice}**. The coin landed on **{display_result}**!"
         match.current_round_score[winner_id] = 2
         match.current_round_score[loser_id] = 1
         return True
@@ -286,6 +397,10 @@ class GamblingCog(commands.Cog):
     async def _resolve_round(self, interaction: discord.Interaction, match):
         score_c = match.current_round_score[match.challenger.id]
         score_o = match.current_round_score[match.opponent.id]
+        last_rolls = getattr(match, "last_rolls", {})
+        c_roll_str = last_rolls.get(match.challenger.id, f"Total: **{score_c}**")
+        o_roll_str = last_rolls.get(match.opponent.id, f"Total: **{score_o}**")
+        match.last_rolls = {}
         
         winner_id = None
         if score_c > score_o:
@@ -297,36 +412,45 @@ class GamblingCog(commands.Cog):
         
         if winner_id:
             game_over = await match_manager.update_score(match, winner_id)
+            winner_member = await self.get_safe_member(interaction.guild, winner_id)
             if game_over:
                 await match_manager.end_match(match)
-                winner_member = await self.get_safe_member(interaction.guild, winner_id)
                 if winner_member:
-                    await interaction.followup.send(embed=build_match_winner_embed(winner_member, match.target_score))
+                    last_note = getattr(match, "last_flip_text", None) if match.game_type == GameType.COINFLIP else None
+                    view = MatchWinnerLayoutView(winner_member, match.target_score, match.game_type.value, note=last_note)
+                    await interaction.followup.send(view=view)
                 return
             else:
                 await match_manager.next_turn(match)
+                match.round_num += 1
                 
-                winner_member = await self.get_safe_member(interaction.guild, winner_id)
                 challenger_member = await self.get_safe_member(interaction.guild, match.challenger.id)
                 opponent_member = await self.get_safe_member(interaction.guild, match.opponent.id)
                 next_player_member = await self.get_safe_member(interaction.guild, match.current_turn_player_id)
                 
-                embed = build_round_winner_embed(
-                    winner_member, 
-                    challenger_member, 
-                    opponent_member, 
-                    match.challenger.score, 
-                    match.opponent.score,
-                    next_player_member
-                )
-
-                if match.game_type == GameType.RPS:
+                if match.game_type == GameType.DICE:
+                    view = DiceRoundResultLayoutView(
+                        match, challenger_member, opponent_member,
+                        c_result_str=c_roll_str,
+                        o_result_str=o_roll_str,
+                        winner_member=winner_member,
+                        next_turn_member=next_player_member,
+                        action_cb=self.play_turn
+                    )
+                    await interaction.followup.send(view=view)
+                elif match.game_type == GameType.COINFLIP:
+                    prev_flip_text = getattr(match, "last_flip_text", None)
+                    view = CoinflipGameplayLayoutView(match, challenger_member, opponent_member, next_player_member, self.play_turn, prev_flip_text=prev_flip_text)
+                    await interaction.followup.send(view=view)
+                elif match.game_type == GameType.RPS:
                     match.rps_first_picker_id = match.opponent.id if match.rps_first_picker_id == match.challenger.id else match.challenger.id
                     match.current_turn_player_id = match.rps_first_picker_id
                     match.rps_choices.clear()
                     view = RPSView(match, self.play_turn)
+                    embed = build_round_winner_embed(winner_member, challenger_member, opponent_member, match.challenger.score, match.opponent.score, next_player_member)
                     await interaction.followup.send(embed=embed, view=view)
                 else:
+                    embed = build_round_winner_embed(winner_member, challenger_member, opponent_member, match.challenger.score, match.opponent.score, next_player_member)
                     match.current_turn_player_id = winner_id
                     view = GameplayView(match, self.play_turn, self.cancel_match)
                     await interaction.followup.send(
@@ -335,19 +459,32 @@ class GamblingCog(commands.Cog):
                         view=view
                     )
         else:
-            await interaction.followup.send(embed=build_error_embed("It's a tie! No points awarded this round."))
-            
-            if match.game_type == GameType.RPS:
+            match.round_num += 1
+            challenger_member = await self.get_safe_member(interaction.guild, match.challenger.id)
+            opponent_member = await self.get_safe_member(interaction.guild, match.opponent.id)
+            if match.game_type == GameType.DICE:
+                view = DiceRoundResultLayoutView(
+                    match, challenger_member, opponent_member,
+                    c_result_str=c_roll_str,
+                    o_result_str=o_roll_str,
+                    winner_member=None,
+                    next_turn_member=challenger_member,
+                    action_cb=self.play_turn
+                )
+                await interaction.followup.send(view=view)
+            elif match.game_type == GameType.COINFLIP:
+                prev_flip_text = getattr(match, "last_flip_text", None)
+                view = CoinflipGameplayLayoutView(match, challenger_member, opponent_member, challenger_member, self.play_turn, prev_flip_text=prev_flip_text)
+                await interaction.followup.send(view=view)
+            elif match.game_type == GameType.RPS:
                 match.rps_first_picker_id = match.opponent.id if match.rps_first_picker_id == match.challenger.id else match.challenger.id
                 match.current_turn_player_id = match.rps_first_picker_id
                 match.rps_choices.clear()
                 view = RPSView(match, self.play_turn)
-                challenger_member = await self.get_safe_member(interaction.guild, match.current_turn_player_id)
                 mention = challenger_member.mention if challenger_member else "Player"
                 await interaction.followup.send(content=f"{mention}, it's your turn to pick again.", view=view)
             else:
                 match.current_turn_player_id = match.challenger.id 
-                challenger_member = await self.get_safe_member(interaction.guild, match.current_turn_player_id)
                 mention = challenger_member.mention if challenger_member else "Player"
                 view = GameplayView(match, self.play_turn, self.cancel_match)
                 await interaction.followup.send(content=f"{mention}, it's your turn to play again.", view=view)
@@ -405,7 +542,8 @@ class GamblingCog(commands.Cog):
             await match_manager.end_match(match)
             winner_member = await self.get_safe_member(interaction.guild, interaction.user.id)
             if winner_member:
-                await interaction.followup.send(embed=build_match_winner_embed(winner_member, match.target_score))
+                view = MatchWinnerLayoutView(winner_member, match.target_score, "colored dice")
+                await interaction.followup.send(view=view)
         else:
             await match_manager.next_turn(match)
             next_player = await self.get_safe_member(interaction.guild, match.current_turn_player_id)
@@ -430,17 +568,48 @@ class GamblingCog(commands.Cog):
             return
 
         if not round_over:
-            if match.game_type != GameType.RPS:
-                try:
-                    await interaction.message.edit(view=None)
-                except:
-                    pass
-                await match_manager.next_turn(match)
-                next_player = await self.get_safe_member(interaction.guild, match.current_turn_player_id)
+            try:
+                await interaction.message.edit(view=None)
+            except:
+                pass
+            await match_manager.next_turn(match)
+            challenger_member = await self.get_safe_member(interaction.guild, match.challenger.id)
+            opponent_member = await self.get_safe_member(interaction.guild, match.opponent.id)
+            next_player = await self.get_safe_member(interaction.guild, match.current_turn_player_id)
+
+            if match.game_type == GameType.DICE:
+                prev_roller = interaction.user.display_name
+                prev_roll = match.last_rolls.get(interaction.user.id, "")
+                prev_roll_text = f"🎲 **{prev_roller}** rolled {prev_roll}"
+                view = DiceGameplayLayoutView(
+                    match=match,
+                    c_member=challenger_member,
+                    o_member=opponent_member,
+                    current_turn_member=next_player,
+                    action_cb=self.play_turn,
+                    prev_roll_text=prev_roll_text
+                )
+                await interaction.followup.send(view=view)
+                return
+            elif match.game_type == GameType.COINFLIP:
+                prev_flip_text = getattr(match, "last_flip_text", None)
+                view = CoinflipGameplayLayoutView(
+                    match=match,
+                    c_member=challenger_member,
+                    o_member=opponent_member,
+                    current_turn_member=next_player,
+                    action_cb=self.play_turn,
+                    prev_flip_text=prev_flip_text
+                )
+                await interaction.followup.send(view=view)
+                return
+            elif match.game_type == GameType.RPS:
+                return
+            else:
                 mention = next_player.mention if next_player else "Player"
                 view = GameplayView(match, self.play_turn, self.cancel_match)
                 await interaction.followup.send(content=f"{mention}, it's your turn!", view=view)
-            return
+                return
 
         try:
             await interaction.message.edit(view=None)
