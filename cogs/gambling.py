@@ -154,7 +154,9 @@ class GamblingCog(commands.Cog):
     @commands.hybrid_command(name="testlayout")
     @app_commands.describe(layout_type="Choose which Component v2 layout to preview")
     @app_commands.choices(layout_type=[
-        app_commands.Choice(name="Color Dice (Sleek Compact Card)", value="colordice"),
+        app_commands.Choice(name="Color Dice (Option 1: Square Emoji Pads 3x2 - No Wrap)", value="colordice_emoji"),
+        app_commands.Choice(name="Color Dice (Option 2: Symmetrical 2x3 Grid with Labels)", value="colordice_grid"),
+        app_commands.Choice(name="Color Dice (Option 3: Dropdown Select Menu)", value="colordice_menu"),
         app_commands.Choice(name="Dice (Option A: Inline Roll Button)", value="dice_inline"),
         app_commands.Choice(name="Dice (Option B: Bottom Action Row)", value="dice_row"),
         app_commands.Choice(name="Dice Round Result (Winner & Next Round)", value="dice_result"),
@@ -162,7 +164,7 @@ class GamblingCog(commands.Cog):
         app_commands.Choice(name="Coinflip (Compact Buttons)", value="coinflip"),
         app_commands.Choice(name="Match Winner Celebration", value="winner"),
     ])
-    async def testlayout(self, ctx, layout_type: str = "colordice"):
+    async def testlayout(self, ctx, layout_type: str = "colordice_emoji"):
         """Preview Discord Components v2 (LayoutView) in the channel."""
         from models.match import Match, Player, GameType
 
@@ -178,6 +180,14 @@ class GamblingCog(commands.Cog):
         )
 
         bot_member = ctx.guild.me if ctx.guild else ctx.author
+
+        cd_style = "emoji"
+        if layout_type == "colordice_grid":
+            cd_style = "grid"
+        elif layout_type == "colordice_menu":
+            cd_style = "menu"
+        elif layout_type in ["colordice", "colordice_emoji"]:
+            cd_style = "emoji"
 
         async def test_dice_cb(interaction: discord.Interaction, m, choice=None):
             import random
@@ -216,7 +226,7 @@ class GamblingCog(commands.Cog):
                 cnt_str = "0 times" if cnt == 0 else ("once" if cnt == 1 else f"{cnt} times")
                 status = f"❌ **No point!** Found {cnt_str} ({m.challenger.score}/{m.target_score})"
             prev = f"🎲 **{interaction.user.display_name}** chose {c_emojis[choice]} **{choice.title()}**\n🎯 Rolled: {rolled_str}\n> {status}"
-            new_v = ColorDiceGameplayLayoutView(m, ctx.author, bot_member, ctx.author, test_colordice_cb, prev_roll_text=prev)
+            new_v = ColorDiceGameplayLayoutView(m, ctx.author, bot_member, ctx.author, test_colordice_cb, prev_roll_text=prev, button_style=cd_style)
             await self._update_layout_message(interaction, new_v)
 
         async def test_accept_cb(interaction: discord.Interaction):
@@ -226,7 +236,7 @@ class GamblingCog(commands.Cog):
         async def test_decline_cb(interaction: discord.Interaction):
             await interaction.response.send_message("❌ Challenge declined!", ephemeral=True)
 
-        if layout_type == "colordice":
+        if layout_type in ["colordice", "colordice_emoji", "colordice_grid", "colordice_menu"]:
             dummy_match.game_type = GameType.COLORED_DICE
             dummy_match.target_score = 5
             view = ColorDiceGameplayLayoutView(
@@ -235,7 +245,8 @@ class GamblingCog(commands.Cog):
                 o_member=bot_member,
                 current_turn_member=ctx.author,
                 action_cb=test_colordice_cb,
-                prev_roll_text="🎲 **bot** chose 🔴 **Red**\n🎯 Rolled: 🔴 🔵 🟢 🟣\n> ✨ **Exact match! +1 point** (1/5)"
+                prev_roll_text="🎲 **bot** chose 🔴 **Red**\n🎯 Rolled: 🔴 🔵 🟢 🟣\n> ✨ **Exact match! +1 point** (1/5)",
+                button_style=cd_style
             )
             await ctx.send(view=view)
         elif layout_type == "dice_inline":
