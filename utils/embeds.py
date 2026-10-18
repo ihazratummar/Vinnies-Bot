@@ -21,17 +21,17 @@ def build_match_start_embed(challenger: discord.Member, opponent: discord.Member
     formatted_game = game_type.replace("_", " ").title()
     gt = game_type.lower()
     if gt == "rps":
-        instruction = "Click the buttons below to play."
+        instruction = "Click the buttons below to pick Rock, Paper, or Scissors."
     elif gt == "colored_dice":
-        instruction = "Use `<color>` to take your turn (e.g. `red`)."
+        instruction = "Click your color choice below to take your turn."
     elif gt == "coinflip":
-        instruction = "Use `<heads/tails>` to take your turn."
+        instruction = "Click **Heads** or **Tails** below to take your turn."
     elif gt == "blackjack":
-        instruction = "Click **Hit** to draw or **Stand** to hold your hand (or type `hit` / `stand`)."
+        instruction = "Click **Hit** or **Stand** below to take your turn."
     elif gt == "dice":
-        instruction = "Use `dice` to take your turn."
+        instruction = "Click the **Roll Dice** button below to roll!"
     else:
-        instruction = "Take your turn!"
+        instruction = "Click the button below to take your turn."
 
     embed = discord.Embed(
         title="⚔️ Match Started!",
@@ -88,38 +88,41 @@ def build_blackjack_embed(
     reveal_challenger: bool = True,
     reveal_opponent: bool = False,
     note: str = None,
-    color: int = COLOR_DEFAULT
+    color: int = COLOR_DEFAULT,
+    image_url: str = "attachment://blackjack.png"
 ) -> discord.Embed:
     embed = discord.Embed(
-        title="🃏 1v1 Blackjack Table",
+        title="🃏 1v1 Blackjack",
         color=color
     )
     
-    c_cards_str, c_total_str, _ = format_hand_display(challenger_cards, reveal=reveal_challenger)
-    o_cards_str, o_total_str, _ = format_hand_display(opponent_cards, reveal=reveal_opponent)
-
-    
     desc_lines = []
     if note:
-        desc_lines.append(f"{note}\n")
+        desc_lines.append(f"{note}")
     if current_turn_member:
-        desc_lines.append(f"👉 **Turn:** {current_turn_member.mention} — Choose **Hit** or **Stand**")
+        desc_lines.append(f"👉 **Turn:** {current_turn_member.mention} — Click **Hit** or **Stand**")
     if desc_lines:
         embed.description = "\n".join(desc_lines)
 
-    embed.add_field(
-        name=f"👤 {challenger.display_name} (Score: {c_score}/{target_score})",
-        value=f"**Cards:** {c_cards_str}\n**Total:** {c_total_str}",
-        inline=False
-    )
-    embed.add_field(
-        name=f"👤 {opponent.display_name} (Score: {o_score}/{target_score})",
-        value=f"**Cards:** {o_cards_str}\n**Total:** {o_total_str}",
-        inline=False
-    )
+    if image_url:
+        embed.set_image(url=image_url)
+    else:
+        c_cards_str, c_total_str, _ = format_hand_display(challenger_cards, reveal=reveal_challenger)
+        o_cards_str, o_total_str, _ = format_hand_display(opponent_cards, reveal=reveal_opponent)
+        embed.add_field(
+            name=f"👤 {challenger.display_name} (Score: {c_score}/{target_score})",
+            value=f"{c_cards_str} • {c_total_str}",
+            inline=False
+        )
+        embed.add_field(
+            name=f"👤 {opponent.display_name} (Score: {o_score}/{target_score})",
+            value=f"{o_cards_str} • {o_total_str}",
+            inline=False
+        )
 
     embed.set_footer(text=f"First to {target_score} wins! • Click buttons below or type 'hit' / 'stand'")
     return embed
+
 
 
 def build_turn_result_embed(player: discord.Member, result: str) -> discord.Embed:

@@ -76,8 +76,9 @@ class MatchManager:
                 
             if key in self.active_matches:
                 match = self.active_matches[key]
-                del self.active_matches[(guild_id, match.challenger.id)]
-                del self.active_matches[(guild_id, match.opponent.id)]
+                match.state = MatchState.FINISHED
+                self.active_matches.pop((guild_id, match.challenger.id), None)
+                self.active_matches.pop((guild_id, match.opponent.id), None)
                 return True, "Your active match was canceled.", match
                 
             for k, match in list(self.pending_challenges.items()):
@@ -95,7 +96,9 @@ class MatchManager:
                 
             to_remove_active = [k for k, m in self.active_matches.items() if m.channel_id == channel_id]
             for k in to_remove_active:
-                del self.active_matches[k]
+                m = self.active_matches.pop(k, None)
+                if m:
+                    m.state = MatchState.FINISHED
 
     async def update_score(self, match: Match, winner_id: int) -> bool:
         async with self.lock:

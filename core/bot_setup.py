@@ -7,9 +7,8 @@ import traceback
 
 class VinniesBot(commands.AutoShardedBot):
     def __init__(self):
+        # Using default intents - no privileged intent review required by Discord!
         intents = discord.Intents.default()
-        intents.message_content = True
-        intents.members = True
         
         super().__init__(command_prefix="!", intents=intents, help_command=None)
         

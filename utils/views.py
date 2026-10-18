@@ -64,8 +64,12 @@ class LeaderboardContainer(discord.ui.Container):
         if not top_users:
             self.add_item(discord.ui.TextDisplay("*No users found on the leaderboard yet!*"))
         else:
-            for i, (user_id, coins) in enumerate(top_users):
-                member = guild.get_member(user_id)
+            for i, item in enumerate(top_users):
+                if len(item) == 3:
+                    user_id, coins, member = item
+                else:
+                    user_id, coins = item
+                    member = guild.get_member(user_id) if guild else None
                 name = member.display_name if member else f"User {user_id}"
                 
                 if i == 0:
@@ -94,17 +98,17 @@ class LeaderboardView(discord.ui.LayoutView):
         self.add_item(self.container)
 
 class GameplayView(discord.ui.View):
-    def __init__(self, match, action_callback, cancel_callback):
+    def __init__(self, match, action_callback, cancel_callback=None):
         super().__init__(timeout=None)
         self.match = match
         self.action_callback = action_callback
-        # cancel_callback is ignored here since players can no longer cancel mid-match
-        
-        if self.match.game_type.value == "dice":
+
+        gt = self.match.game_type.value
+        if gt == "dice":
             action_btn = discord.ui.Button(label="Roll Dice", style=discord.ButtonStyle.primary, custom_id="btn_dice", emoji="🎲")
             action_btn.callback = self._action_btn_callback_dice
             self.add_item(action_btn)
-        else:
+        elif gt == "coinflip":
             heads_btn = discord.ui.Button(label="Heads", style=discord.ButtonStyle.primary, custom_id="btn_heads", emoji="🪙")
             heads_btn.callback = self._action_btn_callback_heads
             self.add_item(heads_btn)
@@ -112,6 +116,19 @@ class GameplayView(discord.ui.View):
             tails_btn = discord.ui.Button(label="Tails", style=discord.ButtonStyle.primary, custom_id="btn_tails", emoji="🪙")
             tails_btn.callback = self._action_btn_callback_tails
             self.add_item(tails_btn)
+        elif gt == "colored_dice":
+            colors = [
+                ("Red", "🔴", discord.ButtonStyle.danger),
+                ("Blue", "🔵", discord.ButtonStyle.primary),
+                ("Green", "🟢", discord.ButtonStyle.success),
+                ("Yellow", "🟡", discord.ButtonStyle.secondary),
+                ("Purple", "🟣", discord.ButtonStyle.secondary),
+                ("Orange", "🟠", discord.ButtonStyle.secondary),
+            ]
+            for color_name, emoji, style in colors:
+                btn = discord.ui.Button(label=color_name, emoji=emoji, style=style, custom_id=f"btn_color_{color_name.lower()}")
+                btn.callback = self._make_color_callback(color_name.lower())
+                self.add_item(btn)
 
     async def _action_btn_callback_dice(self, interaction: discord.Interaction):
         if interaction.user.id != self.match.current_turn_player_id:
@@ -130,6 +147,14 @@ class GameplayView(discord.ui.View):
             await interaction.response.send_message(embed=build_error_embed("It's not your turn!"), ephemeral=True)
             return
         await self.action_callback(interaction, self.match, choice="Tails")
+
+    def _make_color_callback(self, color_name: str):
+        async def callback(interaction: discord.Interaction):
+            if interaction.user.id != self.match.current_turn_player_id:
+                await interaction.response.send_message(embed=build_error_embed("It's not your turn!"), ephemeral=True)
+                return
+            await self.action_callback(interaction, self.match, choice=color_name)
+        return callback
 
 class RPSView(discord.ui.View):
     def __init__(self, match, action_callback):

@@ -20,8 +20,10 @@ from utils.embeds import (
     COLOR_WARNING,
     COLOR_DEFAULT
 )
+from services.card_renderer import generate_blackjack_table
 from discord import app_commands
 import typing
+
 
 
 class GamblingCog(commands.Cog):
@@ -169,9 +171,11 @@ class GamblingCog(commands.Cog):
         elif game_type == GameType.BLACKJACK.value:
             await self._start_blackjack_round(interaction, match)
         else:
+            view = GameplayView(match, self.play_turn, self.cancel_match)
             await interaction.followup.send(
                 content=f"<@{match.current_turn_player_id}>, it's your turn!", 
-                embed=build_match_start_embed(challenger, opponent, game_type)
+                embed=build_match_start_embed(challenger, opponent, game_type),
+                view=view
             )
 
 
@@ -188,7 +192,15 @@ class GamblingCog(commands.Cog):
             await interaction.followup.send(embed=build_error_embed(msg), ephemeral=True)
 
     async def _handle_dice(self, interaction: discord.Interaction, match):
-        if getattr(self.bot, "forced_dice_result", None) is not None:
+        forced_target = self.forced_standard_dice.pop(interaction.user.id, None)
+        if forced_target is not None:
+            min_d1 = max(1, forced_target - 6)
+            max_d1 = min(6, forced_target - 1)
+            die1 = random.randint(min_d1, max_d1)
+            die2 = forced_target - die1
+            result = forced_target
+            display_result = f"**{die1}** and **{die2}** (Total: **{result}**)"
+        elif getattr(self.bot, "forced_dice_result", None) is not None:
             result = self.bot.forced_dice_result
             if hasattr(self.bot, "clear_forced_dice"):
                 self.bot.clear_forced_dice()
@@ -316,9 +328,11 @@ class GamblingCog(commands.Cog):
                     await interaction.followup.send(embed=embed, view=view)
                 else:
                     match.current_turn_player_id = winner_id
+                    view = GameplayView(match, self.play_turn, self.cancel_match)
                     await interaction.followup.send(
                         content=f"<@{match.current_turn_player_id}>, it's your turn!", 
-                        embed=embed
+                        embed=embed,
+                        view=view
                     )
         else:
             await interaction.followup.send(embed=build_error_embed("It's a tie! No points awarded this round."))
@@ -335,7 +349,69 @@ class GamblingCog(commands.Cog):
                 match.current_turn_player_id = match.challenger.id 
                 challenger_member = await self.get_safe_member(interaction.guild, match.current_turn_player_id)
                 mention = challenger_member.mention if challenger_member else "Player"
-                await interaction.followup.send(content=f"{mention}, it's your turn to play again.")
+                view = GameplayView(match, self.play_turn, self.cancel_match)
+                await interaction.followup.send(content=f"{mention}, it's your turn to play again.", view=view)
+
+    async def _handle_colored_dice(self, interaction: discord.Interaction, match, color_choice: str):
+        valid_colors = ["red", "blue", "purple", "orange", "yellow", "green"]
+        if color_choice not in valid_colors:
+            return
+
+        default_emojis = {"red": "🔴", "blue": "🔵", "purple": "🟣", "orange": "🟠", "yellow": "🟡", "green": "🟢"}
+        emojis = {}
+        for c in valid_colors:
+            custom_emoji = discord.utils.get(interaction.guild.emojis, name=c) if interaction.guild else None
+            emojis[c] = str(custom_emoji) if custom_emoji else default_emojis[c]
+
+        forced_color = self.forced_colored_dice.pop(interaction.user.id, None)
+        if forced_color:
+            other_colors = [c for c in valid_colors if c != forced_color]
+            dice_3 = [random.choice(other_colors) for _ in range(3)]
+            rolled_colors = [forced_color] + dice_3
+            random.shuffle(rolled_colors)
+        else:
+            rolled_colors = [random.choice(valid_colors) for _ in range(4)]
+        rolled_emojis = " ".join([emojis[c] for c in rolled_colors])
+        rolled_names = ", ".join([c.title() for c in rolled_colors])
+
+        match_count = rolled_colors.count(color_choice)
+        scored = False
+        
+        player_obj = match.challenger if interaction.user.id == match.challenger.id else match.opponent
+
+        if match_count == 1:
+            scored = True
+            game_over = await match_manager.update_score(match, interaction.user.id)
+        else:
+            game_over = False
+
+        embed = discord.Embed(
+            title=f"🎲 {interaction.user.display_name} rolled:",
+            description=f"{rolled_emojis}\n==============\n🎯 {rolled_names}",
+            color=discord.Color.green() if scored else discord.Color.red()
+        )
+        if scored:
+            embed.set_footer(text=f"Exact match! +1 point ({player_obj.score}/{match.target_score})")
+        else:
+            embed.set_footer(text=f"No point! Found {match_count} times ({player_obj.score}/{match.target_score})")
+
+        try:
+            await interaction.message.edit(view=None)
+        except:
+            pass
+
+        if game_over:
+            await interaction.followup.send(embed=embed)
+            await match_manager.end_match(match)
+            winner_member = await self.get_safe_member(interaction.guild, interaction.user.id)
+            if winner_member:
+                await interaction.followup.send(embed=build_match_winner_embed(winner_member, match.target_score))
+        else:
+            await match_manager.next_turn(match)
+            next_player = await self.get_safe_member(interaction.guild, match.current_turn_player_id)
+            mention = next_player.mention if next_player else "Player"
+            view = GameplayView(match, self.play_turn, self.cancel_match)
+            await interaction.followup.send(content=f"{mention}, it's your turn!", embed=embed, view=view)
 
     async def play_turn(self, interaction: discord.Interaction, match, choice=None):
         await interaction.response.defer()
@@ -349,6 +425,9 @@ class GamblingCog(commands.Cog):
             round_over = await self._handle_coinflip(interaction, match, choice)
         elif match.game_type == GameType.RPS:
             round_over = await self._handle_rps(interaction, match, choice)
+        elif match.game_type == GameType.COLORED_DICE:
+            await self._handle_colored_dice(interaction, match, choice)
+            return
 
         if not round_over:
             if match.game_type != GameType.RPS:
@@ -510,16 +589,19 @@ class GamblingCog(commands.Cog):
                     match.opponent.score,
                     next_player_member
                 )
+                view = GameplayView(match, self.play_turn, self.cancel_match)
                 await ctx.send(
                     content=f"<@{match.current_turn_player_id}>, it's your turn!", 
-                    embed=embed
+                    embed=embed,
+                    view=view
                 )
         else:
             await ctx.send(embed=build_error_embed("It's a tie! No points awarded this round."))
             match.current_turn_player_id = match.challenger.id 
             challenger_member = await self.get_safe_member(ctx.guild, match.current_turn_player_id)
             mention = challenger_member.mention if challenger_member else "Player"
-            await ctx.send(content=f"{mention}, it's your turn to play again.")
+            view = GameplayView(match, self.play_turn, self.cancel_match)
+            await ctx.send(content=f"{mention}, it's your turn to play again.", view=view)
 
     async def _execute_dice_turn_cmd(self, ctx, match):
         if not hasattr(match, "current_round_score"):
@@ -562,7 +644,8 @@ class GamblingCog(commands.Cog):
             await match_manager.next_turn(match)
             next_player = await self.get_safe_member(ctx.guild, match.current_turn_player_id)
             mention = next_player.mention if next_player else "Player"
-            await ctx.send(content=f"{mention}, it's your turn!")
+            view = GameplayView(match, self.play_turn, self.cancel_match)
+            await ctx.send(content=f"{mention}, it's your turn!", view=view)
 
     async def _execute_coinflip_turn_cmd(self, ctx, match, choice):
         if not hasattr(match, "current_round_score"):
@@ -662,17 +745,86 @@ class GamblingCog(commands.Cog):
             aces -= 1
         return total
 
-    async def _update_or_send_table(self, channel, match, embed, view=None, mention_player_id=None):
-        table_msg = match.blackjack_data.get("table_msg")
+    async def _update_or_send_table(
+        self,
+        channel,
+        match,
+        c_member,
+        o_member,
+        reveal_c: bool,
+        reveal_o: bool,
+        note: str = None,
+        color: int = COLOR_DEFAULT,
+        view=None,
+        mention_player_id=None,
+        c_status: str = None,
+        o_status: str = None
+    ):
+        data = match.blackjack_data
+        c_id = match.challenger.id
+        o_id = match.opponent.id
+        c_hand = data["hands"][c_id]
+        o_hand = data["hands"][o_id]
+        c_total = self._calculate_total(c_hand)
+        o_total = self._calculate_total(o_hand)
+        round_num = data.get("round_num", 1)
+
+        banner = f"Round {round_num} • First to {match.target_score}"
+
+        current_turn_member = None
+        if match.current_turn_player_id:
+            current_turn_member = c_member if match.current_turn_player_id == c_member.id else o_member
+
+        # Generate real high-definition card table image
+        img_buf = generate_blackjack_table(
+            challenger_name=c_member.display_name,
+            opponent_name=o_member.display_name,
+            challenger_score=match.challenger.score,
+            opponent_score=match.opponent.score,
+            target_score=match.target_score,
+            challenger_hand=c_hand,
+            opponent_hand=o_hand,
+            c_total=c_total,
+            o_total=o_total,
+            current_turn_id=match.current_turn_player_id,
+            challenger_id=c_id,
+            opponent_id=o_id,
+            reveal_challenger=reveal_c,
+            reveal_opponent=reveal_o,
+            c_status=c_status,
+            o_status=o_status,
+            banner_note=banner
+        )
+
+        embed = build_blackjack_embed(
+            challenger=c_member,
+            opponent=o_member,
+            challenger_cards=c_hand,
+            opponent_cards=o_hand,
+            c_score=match.challenger.score,
+            o_score=match.opponent.score,
+            target_score=match.target_score,
+            current_turn_member=current_turn_member,
+            reveal_challenger=reveal_c,
+            reveal_opponent=reveal_o,
+            note=note,
+            color=color,
+            image_url="attachment://blackjack.png"
+        )
+
+        file = discord.File(fp=img_buf, filename="blackjack.png")
         content = f"<@{mention_player_id}>, it's your turn!" if mention_player_id else None
+
+        table_msg = data.get("table_msg")
         if table_msg:
             try:
-                await table_msg.edit(content=content, embed=embed, view=view)
+                await table_msg.edit(content=content, embed=embed, view=view, attachments=[file])
                 return table_msg
             except (discord.NotFound, discord.HTTPException):
                 pass
-        new_msg = await channel.send(content=content, embed=embed, view=view)
-        match.blackjack_data["table_msg"] = new_msg
+
+        new_msg = await channel.send(content=content, embed=embed, view=view, file=file)
+        data["table_msg"] = new_msg
         return new_msg
 
     async def _start_blackjack_round(self, interaction_or_ctx, match, note=None):
@@ -711,7 +863,6 @@ class GamblingCog(commands.Cog):
         c_member = await self.get_safe_member(guild, c_id)
         o_member = await self.get_safe_member(guild, o_id)
         first_member = await self.get_safe_member(guild, first_id)
-        second_member = await self.get_safe_member(guild, second_id)
 
         first_hand = match.blackjack_data["hands"][first_id]
         second_hand = match.blackjack_data["hands"][second_id]
@@ -721,7 +872,7 @@ class GamblingCog(commands.Cog):
         if first_bj and second_bj:
             await self._finish_blackjack_round(
                 interaction_or_ctx, match, winner_id=None,
-                note="✨ **Both players were dealt Natural Blackjack!** Push / Tie."
+                note="✨ Both players were dealt Natural Blackjack! Push / Tie."
             )
             return
         elif first_bj:
@@ -730,35 +881,27 @@ class GamblingCog(commands.Cog):
             match.current_turn_player_id = second_id
 
             view = BlackjackView(match, self.play_blackjack_turn)
-            embed = build_blackjack_embed(
-                c_member, o_member,
-                c_hand, o_hand,
-                match.challenger.score, match.opponent.score,
-                match.target_score,
-                current_turn_member=second_member,
-                reveal_challenger=True,
-                reveal_opponent=True,
-                note=f"✨ **{first_member.display_name}** was dealt Natural Blackjack (21)! Stood automatically."
+            c_stat = "BLACKJACK (21)" if first_id == c_id else None
+            o_stat = "BLACKJACK (21)" if first_id == o_id else None
+            note_msg = f"✨ **{first_member.display_name}** has Blackjack (21)! Stood automatically."
+            await self._update_or_send_table(
+                channel, match, c_member, o_member,
+                reveal_c=True, reveal_o=True,
+                note=note_msg, view=view, mention_player_id=second_id,
+                c_status=c_stat, o_status=o_stat
             )
-            await self._update_or_send_table(channel, match, embed, view=view, mention_player_id=second_id)
             return
 
         reveal_c = (first_id == c_id)
         reveal_o = (first_id == o_id)
 
         view = BlackjackView(match, self.play_blackjack_turn)
-        initial_note = note or f"🎮 **Round {round_num} Started!** First to {match.target_score} wins."
-        embed = build_blackjack_embed(
-            c_member, o_member,
-            c_hand, o_hand,
-            match.challenger.score, match.opponent.score,
-            match.target_score,
-            current_turn_member=first_member,
-            reveal_challenger=reveal_c,
-            reveal_opponent=reveal_o,
-            note=initial_note
+        initial_note = note or f"🎮 **Round {round_num}** • First to {match.target_score} wins."
+        await self._update_or_send_table(
+            channel, match, c_member, o_member,
+            reveal_c=reveal_c, reveal_o=reveal_o,
+            note=initial_note, view=view, mention_player_id=first_id
         )
-        await self._update_or_send_table(channel, match, embed, view=view, mention_player_id=first_id)
 
     async def play_blackjack_turn(self, interaction: discord.Interaction, match, action: str):
         await interaction.response.defer()
@@ -804,66 +947,55 @@ class GamblingCog(commands.Cog):
 
             if active_id == first_id:
                 if new_total > 21:
-                    note = f"💥 **{active_member.display_name}** drew `[{card[0]}{card[1]}]` and BUSTED with **{new_total}**!\n🏆 **{other_member.display_name}** wins this round!"
-                    await self._finish_blackjack_round(context, match, winner_id=second_id, note=note)
+                    note = f"💥 **{active_member.display_name}** drew {card[0]}{card[1]} and BUSTED with **{new_total}**!\n🏆 **{other_member.display_name}** wins this round!"
+                    c_stat = f"BUST ({new_total})" if first_id == c_id else None
+                    o_stat = f"BUST ({new_total})" if first_id == o_id else None
+                    await self._finish_blackjack_round(context, match, winner_id=second_id, note=note, c_status=c_stat, o_status=o_stat)
                     return
                 elif new_total == 21:
                     data["first_stood"] = True
                     data["active_id"] = second_id
                     match.current_turn_player_id = second_id
 
-                    note = f"✨ **{active_member.display_name}** drew `[{card[0]}{card[1]}]` and hit **21**! Auto-stood.\n👉 Now it's **{other_member.mention}**'s turn!"
+                    note = f"✨ **{active_member.display_name}** hit **21**! Auto-stood.\n👉 Now it's **{other_member.mention}**'s turn!"
                     view = BlackjackView(match, self.play_blackjack_turn)
-                    embed = build_blackjack_embed(
-                        c_member, o_member,
-                        hands[c_id], hands[o_id],
-                        match.challenger.score, match.opponent.score,
-                        match.target_score,
-                        current_turn_member=other_member,
-                        reveal_challenger=True,
-                        reveal_opponent=True,
-                        note=note
+                    c_stat = "21" if first_id == c_id else None
+                    o_stat = "21" if first_id == o_id else None
+                    await self._update_or_send_table(
+                        channel, match, c_member, o_member,
+                        reveal_c=True, reveal_o=True,
+                        note=note, view=view, mention_player_id=second_id,
+                        c_status=c_stat, o_status=o_stat
                     )
-                    await self._update_or_send_table(channel, match, embed, view=view, mention_player_id=second_id)
                     return
                 else:
-                    note = f"🃏 **{active_member.display_name}** drew `[{card[0]}{card[1]}]` (Total: **{new_total}**)."
+                    note = f"🃏 **{active_member.display_name}** drew {card[0]}{card[1]} (Total: **{new_total}**)."
                     view = BlackjackView(match, self.play_blackjack_turn)
-                    embed = build_blackjack_embed(
-                        c_member, o_member,
-                        hands[c_id], hands[o_id],
-                        match.challenger.score, match.opponent.score,
-                        match.target_score,
-                        current_turn_member=active_member,
-                        reveal_challenger=(first_id == c_id),
-                        reveal_opponent=(first_id == o_id),
-                        note=note
+                    await self._update_or_send_table(
+                        channel, match, c_member, o_member,
+                        reveal_c=(first_id == c_id), reveal_o=(first_id == o_id),
+                        note=note, view=view, mention_player_id=first_id
                     )
-                    await self._update_or_send_table(channel, match, embed, view=view, mention_player_id=first_id)
                     return
             else:
                 if new_total > 21:
-                    note = f"💥 **{active_member.display_name}** drew `[{card[0]}{card[1]}]` and BUSTED with **{new_total}**!\n🏆 **{other_member.display_name}** wins this round!"
-                    await self._finish_blackjack_round(context, match, winner_id=first_id, note=note)
+                    note = f"💥 **{active_member.display_name}** drew {card[0]}{card[1]} and BUSTED with **{new_total}**!\n🏆 **{other_member.display_name}** wins this round!"
+                    c_stat = f"BUST ({new_total})" if second_id == c_id else None
+                    o_stat = f"BUST ({new_total})" if second_id == o_id else None
+                    await self._finish_blackjack_round(context, match, winner_id=first_id, note=note, c_status=c_stat, o_status=o_stat)
                     return
                 elif new_total == 21:
-                    prefix = f"✨ **{active_member.display_name}** drew `[{card[0]}{card[1]}]` and hit **21**!"
+                    prefix = f"✨ **{active_member.display_name}** drew {card[0]}{card[1]} and reached **21**!"
                     await self._compare_and_finish_blackjack_round(context, match, note_prefix=prefix)
                     return
                 else:
-                    note = f"🃏 **{active_member.display_name}** drew `[{card[0]}{card[1]}]` (Total: **{new_total}**)."
+                    note = f"🃏 **{active_member.display_name}** drew {card[0]}{card[1]} (Total: **{new_total}**)."
                     view = BlackjackView(match, self.play_blackjack_turn)
-                    embed = build_blackjack_embed(
-                        c_member, o_member,
-                        hands[c_id], hands[o_id],
-                        match.challenger.score, match.opponent.score,
-                        match.target_score,
-                        current_turn_member=active_member,
-                        reveal_challenger=True,
-                        reveal_opponent=True,
-                        note=note
+                    await self._update_or_send_table(
+                        channel, match, c_member, o_member,
+                        reveal_c=True, reveal_o=True,
+                        note=note, view=view, mention_player_id=second_id
                     )
-                    await self._update_or_send_table(channel, match, embed, view=view, mention_player_id=second_id)
                     return
 
         elif action == "stand":
@@ -875,17 +1007,11 @@ class GamblingCog(commands.Cog):
                 first_total = self._calculate_total(hands[first_id])
                 note = f"🛑 **{active_member.display_name}** stood at **{first_total}**.\n👉 Now it's **{other_member.mention}**'s turn!"
                 view = BlackjackView(match, self.play_blackjack_turn)
-                embed = build_blackjack_embed(
-                    c_member, o_member,
-                    hands[c_id], hands[o_id],
-                    match.challenger.score, match.opponent.score,
-                    match.target_score,
-                    current_turn_member=other_member,
-                    reveal_challenger=True,
-                    reveal_opponent=True,
-                    note=note
+                await self._update_or_send_table(
+                    channel, match, c_member, o_member,
+                    reveal_c=True, reveal_o=True,
+                    note=note, view=view, mention_player_id=second_id
                 )
-                await self._update_or_send_table(channel, match, embed, view=view, mention_player_id=second_id)
                 return
             else:
                 second_total = self._calculate_total(hands[second_id])
@@ -897,6 +1023,9 @@ class GamblingCog(commands.Cog):
         data = match.blackjack_data
         first_id = data["first_id"]
         second_id = data["second_id"]
+        c_id = match.challenger.id
+        o_id = match.opponent.id
+
         h1 = data["hands"][first_id]
         h2 = data["hands"][second_id]
 
@@ -909,12 +1038,22 @@ class GamblingCog(commands.Cog):
         first_member = await self.get_safe_member(context.guild, first_id)
         second_member = await self.get_safe_member(context.guild, second_id)
 
+        c_stat = None
+        o_stat = None
         if bj1 and not bj2:
             winner_id = first_id
             note = f"{note_prefix}\n✨ **{first_member.display_name}** wins with Natural Blackjack! (21 vs {t2})"
+            if first_id == c_id:
+                c_stat = "BLACKJACK (21)"
+            else:
+                o_stat = "BLACKJACK (21)"
         elif bj2 and not bj1:
             winner_id = second_id
             note = f"{note_prefix}\n✨ **{second_member.display_name}** wins with Natural Blackjack! (21 vs {t1})"
+            if second_id == c_id:
+                c_stat = "BLACKJACK (21)"
+            else:
+                o_stat = "BLACKJACK (21)"
         elif t1 > t2:
             winner_id = first_id
             note = f"{note_prefix}\n🏆 **{first_member.display_name}** wins the round (**{t1}** vs **{t2}**)!"
@@ -923,20 +1062,16 @@ class GamblingCog(commands.Cog):
             note = f"{note_prefix}\n🏆 **{second_member.display_name}** wins the round (**{t2}** vs **{t1}**)!"
         else:
             winner_id = None
-            note = f"{note_prefix}\n🤝 **It's a Push / Tie!** Both finished with **{t1}**. No points awarded."
+            note = f"{note_prefix}\n🤝 **It's a Push / Tie!** Both finished with **{t1}**."
 
-        await self._finish_blackjack_round(context, match, winner_id=winner_id, note=note)
+        await self._finish_blackjack_round(context, match, winner_id=winner_id, note=note, c_status=c_stat, o_status=o_stat)
 
-    async def _finish_blackjack_round(self, context, match, winner_id, note: str):
+    async def _finish_blackjack_round(self, context, match, winner_id, note: str, c_status: str = None, o_status: str = None):
         guild = context.guild
         channel = context.channel
-        data = match.blackjack_data
 
         c_id = match.challenger.id
         o_id = match.opponent.id
-        c_hand = data["hands"][c_id]
-        o_hand = data["hands"][o_id]
-
         c_member = await self.get_safe_member(guild, c_id)
         o_member = await self.get_safe_member(guild, o_id)
 
@@ -945,19 +1080,14 @@ class GamblingCog(commands.Cog):
             game_over = await match_manager.update_score(match, winner_id)
 
         color = COLOR_SUCCESS if winner_id else COLOR_WARNING
-        table_embed = build_blackjack_embed(
-            c_member, o_member,
-            c_hand, o_hand,
-            match.challenger.score, match.opponent.score,
-            match.target_score,
-            current_turn_member=None,
-            reveal_challenger=True,
-            reveal_opponent=True,
-            note=note,
-            color=color
-        )
+        match.current_turn_player_id = None
 
-        await self._update_or_send_table(channel, match, table_embed, view=None)
+        await self._update_or_send_table(
+            channel, match, c_member, o_member,
+            reveal_c=True, reveal_o=True,
+            note=note, color=color, view=None,
+            c_status=c_status, o_status=o_status
+        )
 
         if winner_id:
             winner_member = await self.get_safe_member(guild, winner_id)
@@ -971,9 +1101,7 @@ class GamblingCog(commands.Cog):
                 embed = discord.Embed(
                     title="🏆 Round Over!",
                     description=f"{winner_member.mention} wins this round!\n\n"
-                                f"**Current Match Score:**\n"
-                                f"{c_member.mention}: **{c_score}**\n"
-                                f"{o_member.mention}: **{o_score}**\n\n"
+                                f"**Match Score:** {c_member.mention} **{c_score}** — **{o_score}** {o_member.mention}\n"
                                 f"*(First to {match.target_score} wins)*",
                     color=COLOR_WARNING
                 )
@@ -981,9 +1109,8 @@ class GamblingCog(commands.Cog):
         else:
             embed = discord.Embed(
                 title="🤝 Round Over (Push / Tie)!",
-                description=f"Neither player scored this round. Score remains:\n"
-                            f"{c_member.mention}: **{match.challenger.score}**\n"
-                            f"{o_member.mention}: **{match.opponent.score}**",
+                description=f"Neither player scored this round.\n"
+                            f"**Match Score:** {c_member.mention} **{match.challenger.score}** — **{match.opponent.score}** {o_member.mention}",
                 color=COLOR_WARNING
             )
             await channel.send(embed=embed)
@@ -994,4 +1121,5 @@ class GamblingCog(commands.Cog):
 
 async def setup(bot):
     await bot.add_cog(GamblingCog(bot))
+
 

@@ -48,6 +48,18 @@ class EconomyCog(commands.Cog):
         self.scheduler.add_job(self.auto_refresh_leaderboards, 'interval', minutes=1)
         self.scheduler.start()
 
+    async def _resolve_top_users(self, guild: discord.Guild, top_users: list):
+        resolved = []
+        for user_id, coins in top_users:
+            member = guild.get_member(user_id)
+            if not member:
+                try:
+                    member = await guild.fetch_member(user_id)
+                except (discord.NotFound, discord.HTTPException):
+                    member = None
+            resolved.append((user_id, coins, member))
+        return resolved
+
     async def auto_refresh_leaderboards(self):
         leaderboards = await economy_manager.get_all_leaderboards()
         for guild_id, channel_id, message_id in leaderboards:
@@ -60,7 +72,8 @@ class EconomyCog(commands.Cog):
             try:
                 msg = await channel.fetch_message(message_id)
                 top_users = await economy_manager.get_top_users(guild.id, limit=10)
-                view = LeaderboardView(guild=guild, top_users=top_users)
+                resolved = await self._resolve_top_users(guild, top_users)
+                view = LeaderboardView(guild=guild, top_users=resolved)
                 await msg.edit(view=view)
             except (discord.NotFound, discord.Forbidden):
                 # If message is deleted or we don't have permissions (or it's authored by webhook), remove from DB
@@ -266,9 +279,10 @@ class EconomyCog(commands.Cog):
                 
         # 2. Fetch top 10 users from database
         top_users = await economy_manager.get_top_users(ctx.guild.id, limit=10)
+        resolved = await self._resolve_top_users(ctx.guild, top_users)
         
         # 3. Create the LayoutView (without embeds!)
-        view = LeaderboardView(guild=ctx.guild, top_users=top_users)
+        view = LeaderboardView(guild=ctx.guild, top_users=resolved)
         
         # 4. Send new message as Bot Client (NOT Interaction Webhook)
         msg = await ctx.channel.send(view=view)
