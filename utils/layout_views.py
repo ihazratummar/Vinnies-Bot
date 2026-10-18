@@ -16,6 +16,7 @@ COLOR_GOLD = discord.Colour.gold()
 COLOR_BLURPLE = discord.Colour.blurple()
 COLOR_GREEN = discord.Colour.green()
 COLOR_RED = discord.Colour.red()
+COLOR_PURPLE = discord.Colour.from_rgb(138, 43, 226)
 COLOR_DARK_FELT = discord.Colour.from_rgb(10, 36, 26)
 
 class ChallengeLayoutView(LayoutView):
@@ -237,6 +238,69 @@ class CoinflipGameplayLayoutView(LayoutView):
             await interaction.response.send_message(embed=build_error_embed("It's not your turn!"), ephemeral=True)
             return
         await self.action_cb(interaction, self.match, choice="Tails")
+
+
+class ColorDiceGameplayLayoutView(LayoutView):
+    """Component v2 layout for active 1v1 Color Dice match with clean 3x2 color buttons."""
+    def __init__(
+        self,
+        match,
+        c_member: discord.Member,
+        o_member: discord.Member,
+        current_turn_member: discord.Member,
+        action_cb,
+        prev_roll_text: str = None
+    ):
+        super().__init__(timeout=None)
+        self.match = match
+        self.action_cb = action_cb
+
+        header_text = "### 🎨 1v1 Color Dice"
+        score_text = f"> 🏆 **Match Score:** {c_member.mention} **({match.challenger.score})** — **({match.opponent.score})** {o_member.mention} *(First to {match.target_score})*"
+
+        children = [
+            TextDisplay(header_text),
+            TextDisplay(score_text),
+            Separator(spacing=discord.SeparatorSpacing.small)
+        ]
+
+        if prev_roll_text:
+            children.append(TextDisplay(prev_roll_text))
+            children.append(Separator(spacing=discord.SeparatorSpacing.small))
+
+        children.append(TextDisplay(f"👉 **{current_turn_member.mention}**, choose a color to roll:"))
+
+        row1 = ActionRow(
+            Button(label="Red", emoji="🔴", style=discord.ButtonStyle.danger, custom_id="btn_v2_cd_red"),
+            Button(label="Blue", emoji="🔵", style=discord.ButtonStyle.primary, custom_id="btn_v2_cd_blue"),
+            Button(label="Green", emoji="🟢", style=discord.ButtonStyle.success, custom_id="btn_v2_cd_green"),
+        )
+        row1.children[0].callback = self._make_color_callback("red")
+        row1.children[1].callback = self._make_color_callback("blue")
+        row1.children[2].callback = self._make_color_callback("green")
+
+        row2 = ActionRow(
+            Button(label="Yellow", emoji="🟡", style=discord.ButtonStyle.secondary, custom_id="btn_v2_cd_yellow"),
+            Button(label="Purple", emoji="🟣", style=discord.ButtonStyle.secondary, custom_id="btn_v2_cd_purple"),
+            Button(label="Orange", emoji="🟠", style=discord.ButtonStyle.secondary, custom_id="btn_v2_cd_orange"),
+        )
+        row2.children[0].callback = self._make_color_callback("yellow")
+        row2.children[1].callback = self._make_color_callback("purple")
+        row2.children[2].callback = self._make_color_callback("orange")
+
+        children.append(row1)
+        children.append(row2)
+
+        container = Container(*children, accent_colour=COLOR_PURPLE)
+        self.add_item(container)
+
+    def _make_color_callback(self, color_name: str):
+        async def callback(interaction: discord.Interaction):
+            if interaction.user.id != self.match.current_turn_player_id:
+                await interaction.response.send_message(embed=build_error_embed("It's not your turn!"), ephemeral=True)
+                return
+            await self.action_cb(interaction, self.match, choice=color_name)
+        return callback
 
 
 class BlackjackLayoutView(LayoutView):
