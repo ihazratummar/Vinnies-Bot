@@ -313,8 +313,7 @@ class GamblingCog(commands.Cog):
                 c_member=challenger,
                 o_member=opponent,
                 current_turn_member=challenger,
-                action_cb=self.play_diamond_turn,
-                verify_cb=self.verify_diamond_game
+                action_cb=self.play_diamond_turn
             )
             await self._update_layout_message(interaction, view)
         else:
@@ -638,7 +637,6 @@ class GamblingCog(commands.Cog):
                 o_member=opponent,
                 current_turn_member=None,
                 action_cb=self.play_diamond_turn,
-                verify_cb=self.verify_diamond_game,
                 winner_member=interaction.user,
                 payout=payout
             )
@@ -653,8 +651,7 @@ class GamblingCog(commands.Cog):
                 c_member=challenger,
                 o_member=opponent,
                 current_turn_member=next_player,
-                action_cb=self.play_diamond_turn,
-                verify_cb=self.verify_diamond_game
+                action_cb=self.play_diamond_turn
             )
             await self._update_layout_message(interaction, view)
 
@@ -1102,7 +1099,6 @@ class GamblingCog(commands.Cog):
                 o_member=opponent,
                 current_turn_member=None,
                 action_cb=self.play_diamond_turn,
-                verify_cb=self.verify_diamond_game,
                 winner_member=ctx.author,
                 payout=payout
             )
@@ -1117,8 +1113,7 @@ class GamblingCog(commands.Cog):
                 c_member=challenger,
                 o_member=opponent,
                 current_turn_member=next_player,
-                action_cb=self.play_diamond_turn,
-                verify_cb=self.verify_diamond_game
+                action_cb=self.play_diamond_turn
             )
             await ctx.send(view=view)
 

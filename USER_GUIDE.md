@@ -56,9 +56,8 @@ The game continues round-by-round until a player reaches the target score.
 - 1 hidden 💎 is placed randomly by the bot before the match starts, committed with a Provably Fair SHA-256 hash.
 - Players take turns clicking any unrevealed button (or typing the button number in the ticket chat).
 - If a button misses, it reveals a dark `❌` and the turn passes to the opponent.
-- If a button contains the diamond, it illuminates green `💎` and that player immediately wins the entire pot!
-- **House Rake & Payout**: Standard 5% house rake is deducted from the total pot ($2.00 wager each = $4.00 pot -> **+$3.80 payout**).
-- **Provably Fair `[🔍 Verify]`**: Anyone can click the Verify button at any time. While active, the SHA-256 hash is visible. Once the match finishes, the server seed and winning tile are revealed for instant cryptographic verification.
+- If a button contains the diamond, it illuminates green `💎` and that player immediately wins the match!
+- **Wager & Settlement**: The game is played 1v1 between two users based on their agreed wager, and dealers settle the payout directly with the winner.
 
 ---
 

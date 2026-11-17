@@ -452,7 +452,6 @@ class DiamondGameplayLayoutView(LayoutView):
     Component v2 layout for 1v1 'Find the Diamond' minigame.
     Features:
     - 4x4 interactive button grid (Buttons 1-16) across 4 ActionRows
-    - 5th ActionRow with a Provably Fair 'Verify' button
     - Real-time in-place card updates
     - Turn synchronization with concurrency guard
     - Authentic Discord v2 Component styling matching client requirements
@@ -464,15 +463,14 @@ class DiamondGameplayLayoutView(LayoutView):
         o_member: discord.Member,
         current_turn_member: discord.Member = None,
         action_cb = None,
-        verify_cb = None,
         winner_member: discord.Member = None,
-        payout: float = 0.0
+        payout: float = 0.0,
+        verify_cb = None
     ):
         super().__init__(timeout=None)
         self.match = match
         self.current_turn_player_id = match.current_turn_player_id
         self.action_cb = action_cb
-        self.verify_cb = verify_cb
         self._processing = False
 
         d_data = match.diamond_data
@@ -492,7 +490,7 @@ class DiamondGameplayLayoutView(LayoutView):
         content_lines = [header_text, sub_text, matchup_text, ""]
 
         if is_finished and winner_member and winner_tile:
-            content_lines.append(f"🏆 **{winner_member.mention} found the diamond on button {winner_tile}! +${payout:.2f}**")
+            content_lines.append(f"🏆 **{winner_member.mention} found the diamond on button {winner_tile}!**")
             content_lines.append(f"*{press_count} presses*")
         else:
             if current_turn_member:
@@ -546,16 +544,6 @@ class DiamondGameplayLayoutView(LayoutView):
                 row_buttons.append(btn)
             children.append(ActionRow(*row_buttons))
 
-        # 5th ActionRow: Provably Fair Verify Button
-        verify_btn = Button(
-            label="Verify",
-            emoji="🔍",
-            style=discord.ButtonStyle.secondary,
-            custom_id=f"btn_v2_dm_verify_{match_id}"
-        )
-        verify_btn.callback = self._on_verify
-        children.append(ActionRow(verify_btn))
-
         container = Container(*children, accent_colour=COLOR_GOLD)
         self.add_item(container)
 
@@ -569,7 +557,3 @@ class DiamondGameplayLayoutView(LayoutView):
             self._processing = True
             await self.action_cb(interaction, self.match, tile=tile_num)
         return callback
-
-    async def _on_verify(self, interaction: discord.Interaction):
-        if self.verify_cb:
-            await self.verify_cb(interaction, self.match)
