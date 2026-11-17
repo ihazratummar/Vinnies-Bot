@@ -6,9 +6,12 @@ Welcome to **V's Friend Bot**! This Discord bot allows you to challenge your fri
 
 ## 🎮 Available Games
 
-Currently, the bot supports two head-to-head games:
-1. **Dice**: Roll a 12-sided die. The highest roll wins the round.
-2. **Coinflip**: Flip a coin. Heads beats Tails.
+Currently, the bot supports head-to-head 1v1 games:
+1. **Find the Diamond**: Turn-based 4x4 grid (16 buttons). Players take turns clicking buttons to find the hidden 💎. Provably Fair SHA-256 verification and automatic 5% rake calculation!
+2. **Color Dice**: Roll dice to match target colors (FT3 / FT5).
+3. **Dice**: Roll a 12-sided die. The highest roll wins the round.
+4. **Coinflip**: Flip a coin. Heads beats Tails.
+5. **Blackjack**: Head-to-head 21 card duel.
 
 ---
 
@@ -18,8 +21,11 @@ Currently, the bot supports two head-to-head games:
 To start a match, you must challenge another user. Keep in mind that games can only be played in designated ticket channels, and you cannot challenge a bot or yourself.
 
 Use one of the following commands in the chat:
+- `/diamond @username [wager]` - Challenges the mentioned user to **Find the Diamond** (default: $2.00 each).
+- `/colordice @username [ft3/ft5]` - Challenges the mentioned user to Color Dice.
 - `/dice @username` - Challenges the mentioned user to a game of Dice.
 - `/coinflip @username` - Challenges the mentioned user to a game of Coinflip.
+- `/blackjack @username [ft3/ft5]` - Challenges the mentioned user to Blackjack.
 
 ### 2. Accepting or Declining a Challenge
 Once the command is sent, the bot will display a challenge message with interactive buttons.
@@ -45,8 +51,20 @@ The game continues round-by-round until a player reaches the target score.
 
 ---
 
+### 💎 Find the Diamond Rules
+- A 4x4 interactive grid containing 16 buttons (numbered 1 through 16).
+- 1 hidden 💎 is placed randomly by the bot before the match starts, committed with a Provably Fair SHA-256 hash.
+- Players take turns clicking any unrevealed button (or typing the button number in the ticket chat).
+- If a button misses, it reveals a dark `❌` and the turn passes to the opponent.
+- If a button contains the diamond, it illuminates green `💎` and that player immediately wins the entire pot!
+- **House Rake & Payout**: Standard 5% house rake is deducted from the total pot ($2.00 wager each = $4.00 pot -> **+$3.80 payout**).
+- **Provably Fair `[🔍 Verify]`**: Anyone can click the Verify button at any time. While active, the SHA-256 hash is visible. Once the match finishes, the server seed and winning tile are revealed for instant cryptographic verification.
+
+---
+
 ## 🛠️ Admin Commands
 The bot owners have access to special commands for testing and moderation.
+- `diamond <1-16>` (in bot DM): Forces the winning diamond tile to the specified number for whitelisted admins while maintaining valid SHA-256 provably fair verification.
 - `/setdice <2-12>`: Forces the next dice roll in any match to be the exact number specified. 
 - `/cancelmatch @user`: Forcefully cancels an active match or pending challenge for the mentioned user. Use this if a game gets stuck or players refuse to play.
 *(Note: These commands are restricted to specific Bot Owner IDs and can be used privately in DMs with the bot!)*

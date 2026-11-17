@@ -40,6 +40,8 @@ class MatchManager:
                 match.target_score = 3
             elif game_type in (GameType.COLORED_DICE, GameType.BLACKJACK):
                 match.target_score = target_score
+            elif game_type == GameType.DIAMOND:
+                match.target_score = 1
 
                 
             self.pending_challenges[(guild_id, challenger_id)] = match

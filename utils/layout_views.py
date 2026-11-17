@@ -22,7 +22,7 @@ COLOR_DARK_FELT = discord.Colour.from_rgb(10, 36, 26)
 
 class ChallengeLayoutView(LayoutView):
     """Component v2 layout for challenge invitations (Dice, Coinflip, Blackjack, etc.)."""
-    def __init__(self, challenger: discord.Member, opponent: discord.Member, game_type: str, target_score: int, accept_cb, decline_cb):
+    def __init__(self, challenger: discord.Member, opponent: discord.Member, game_type: str, target_score: int, accept_cb, decline_cb, rules_text: str = None):
         super().__init__(timeout=None)
         self.challenger_id = challenger.id
         self.opponent_id = opponent.id
@@ -38,9 +38,10 @@ class ChallengeLayoutView(LayoutView):
         decline_btn.callback = self._on_decline
 
         avatar_url = challenger.display_avatar.url if challenger and challenger.display_avatar else None
+        rule_desc = rules_text if rules_text else f"First to **{target_score}** wins."
         desc_text = (
             f"**{challenger.display_name}** has challenged **{opponent.display_name}** to a **{formatted_game}** match!\n"
-            f"🎯 **Rules:** First to **{target_score}** wins.\n\n"
+            f"🎯 **Rules:** {rule_desc}\n\n"
             f"{opponent.mention}, click below to respond:"
         )
 
@@ -444,3 +445,131 @@ class MatchWinnerLayoutView(LayoutView):
             accent_colour=COLOR_GOLD
         )
         self.add_item(container)
+
+
+class DiamondGameplayLayoutView(LayoutView):
+    """
+    Component v2 layout for 1v1 'Find the Diamond' minigame.
+    Features:
+    - 4x4 interactive button grid (Buttons 1-16) across 4 ActionRows
+    - 5th ActionRow with a Provably Fair 'Verify' button
+    - Real-time in-place card updates
+    - Turn synchronization with concurrency guard
+    - Authentic Discord v2 Component styling matching client requirements
+    """
+    def __init__(
+        self,
+        match,
+        c_member: discord.Member,
+        o_member: discord.Member,
+        current_turn_member: discord.Member = None,
+        action_cb = None,
+        verify_cb = None,
+        winner_member: discord.Member = None,
+        payout: float = 0.0
+    ):
+        super().__init__(timeout=None)
+        self.match = match
+        self.current_turn_player_id = match.current_turn_player_id
+        self.action_cb = action_cb
+        self.verify_cb = verify_cb
+        self._processing = False
+
+        d_data = match.diamond_data
+        match_id = d_data.get("match_id", 1)
+        wager = d_data.get("wager", 2.0)
+        revealed = d_data.get("revealed", {})
+        press_count = d_data.get("presses", 0)
+        is_finished = d_data.get("is_finished", False)
+        winner_tile = d_data.get("winner_tile", None)
+        turn_tag = getattr(match, "turn_count", 0)
+
+        # Header information
+        header_text = "# 💎 Find the Diamond"
+        sub_text = f"**#{match_id}** · **${wager:.2f} each**"
+        matchup_text = f"{c_member.mention} **vs** {o_member.mention}"
+
+        content_lines = [header_text, sub_text, matchup_text, ""]
+
+        if is_finished and winner_member and winner_tile:
+            content_lines.append(f"🏆 **{winner_member.mention} found the diamond on button {winner_tile}! +${payout:.2f}**")
+            content_lines.append(f"*{press_count} presses*")
+        else:
+            if current_turn_member:
+                content_lines.append(f"👉 **{current_turn_member.mention}**, it's your turn to pick a button!")
+            if press_count > 0:
+                content_lines.append(f"*{press_count} presses*")
+
+        children = [
+            TextDisplay("\n".join(content_lines)),
+            Separator(spacing=discord.SeparatorSpacing.small)
+        ]
+
+        # 4x4 Grid of Buttons (4 ActionRows of 4 buttons)
+        for row_idx in range(4):
+            row_buttons = []
+            for col_idx in range(4):
+                tile_num = row_idx * 4 + col_idx + 1
+
+                if tile_num in revealed:
+                    is_diamond = revealed[tile_num]
+                    if is_diamond:
+                        btn = Button(
+                            emoji="💎",
+                            style=discord.ButtonStyle.success,
+                            disabled=True,
+                            custom_id=f"btn_v2_dm_{tile_num}_hit"
+                        )
+                    else:
+                        btn = Button(
+                            emoji="❌",
+                            style=discord.ButtonStyle.secondary,
+                            disabled=True,
+                            custom_id=f"btn_v2_dm_{tile_num}_miss"
+                        )
+                else:
+                    if is_finished:
+                        btn = Button(
+                            label=str(tile_num),
+                            style=discord.ButtonStyle.secondary,
+                            disabled=True,
+                            custom_id=f"btn_v2_dm_{tile_num}_done"
+                        )
+                    else:
+                        btn = Button(
+                            label=str(tile_num),
+                            style=discord.ButtonStyle.primary,
+                            custom_id=f"btn_v2_dm_{tile_num}_{turn_tag}"
+                        )
+                        btn.callback = self._make_tile_callback(tile_num)
+
+                row_buttons.append(btn)
+            children.append(ActionRow(*row_buttons))
+
+        # 5th ActionRow: Provably Fair Verify Button
+        verify_btn = Button(
+            label="Verify",
+            emoji="🔍",
+            style=discord.ButtonStyle.secondary,
+            custom_id=f"btn_v2_dm_verify_{match_id}"
+        )
+        verify_btn.callback = self._on_verify
+        children.append(ActionRow(verify_btn))
+
+        container = Container(*children, accent_colour=COLOR_GOLD)
+        self.add_item(container)
+
+    def _make_tile_callback(self, tile_num: int):
+        async def callback(interaction: discord.Interaction):
+            if interaction.user.id != self.current_turn_player_id:
+                await interaction.response.send_message(embed=build_error_embed("It's not your turn!"), ephemeral=True)
+                return
+            if self._processing:
+                return
+            self._processing = True
+            await self.action_cb(interaction, self.match, tile=tile_num)
+        return callback
+
+    async def _on_verify(self, interaction: discord.Interaction):
+        if self.verify_cb:
+            await self.verify_cb(interaction, self.match)

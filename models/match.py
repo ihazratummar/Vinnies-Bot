@@ -8,6 +8,7 @@ class GameType(Enum):
     RPS = "rps"
     COLORED_DICE = "colored_dice"
     BLACKJACK = "blackjack"
+    DIAMOND = "diamond"
 
 @dataclass
 class Player:
@@ -32,6 +33,7 @@ class Match:
     rps_choices: dict = field(default_factory=dict)
     rps_first_picker_id: Optional[int] = None
     blackjack_data: dict = field(default_factory=dict)
+    diamond_data: dict = field(default_factory=dict)
     round_num: int = 1
     turn_count: int = 0
 
