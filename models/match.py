@@ -33,4 +33,5 @@ class Match:
     rps_first_picker_id: Optional[int] = None
     blackjack_data: dict = field(default_factory=dict)
     round_num: int = 1
+    turn_count: int = 0
 

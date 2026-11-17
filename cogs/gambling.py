@@ -151,169 +151,7 @@ class GamblingCog(commands.Cog):
         """(Disabled) Challenges a user to a Rock Paper Scissors match."""
         await ctx.send(embed=build_error_embed("Rock Paper Scissors is currently disabled!"), ephemeral=True)
 
-    @commands.hybrid_command(name="testlayout")
-    @app_commands.describe(layout_type="Choose which Component v2 layout to preview")
-    @app_commands.choices(layout_type=[
-        app_commands.Choice(name="Color Dice (Option 1: Square Emoji Pads 3x2 - No Wrap)", value="colordice_emoji"),
-        app_commands.Choice(name="Color Dice (Option 2: Symmetrical 2x3 Grid with Labels)", value="colordice_grid"),
-        app_commands.Choice(name="Color Dice (Option 3: Dropdown Select Menu)", value="colordice_menu"),
-        app_commands.Choice(name="Dice (Option A: Inline Roll Button)", value="dice_inline"),
-        app_commands.Choice(name="Dice (Option B: Bottom Action Row)", value="dice_row"),
-        app_commands.Choice(name="Dice Round Result (Winner & Next Round)", value="dice_result"),
-        app_commands.Choice(name="Challenge Invitation Card", value="challenge"),
-        app_commands.Choice(name="Coinflip (Compact Buttons)", value="coinflip"),
-        app_commands.Choice(name="Match Winner Celebration", value="winner"),
-    ])
-    async def testlayout(self, ctx, layout_type: str = "colordice_emoji"):
-        """Preview Discord Components v2 (LayoutView) in the channel."""
-        from models.match import Match, Player, GameType
 
-        dummy_match = Match(
-            challenger=Player(id=ctx.author.id, score=1),
-            opponent=Player(id=self.bot.user.id, score=0),
-            game_type=GameType.DICE,
-            channel_id=ctx.channel.id,
-            guild_id=ctx.guild.id,
-            target_score=3,
-            current_turn_player_id=ctx.author.id,
-            round_num=2
-        )
-
-        bot_member = ctx.guild.me if ctx.guild else ctx.author
-
-        cd_style = "emoji"
-        if layout_type == "colordice_grid":
-            cd_style = "grid"
-        elif layout_type == "colordice_menu":
-            cd_style = "menu"
-        elif layout_type in ["colordice", "colordice_emoji"]:
-            cd_style = "emoji"
-
-        async def test_dice_cb(interaction: discord.Interaction, m, choice=None):
-            import random
-            r1 = random.randint(1, 6)
-            r2 = random.randint(1, 6)
-            tot = r1 + r2
-            if m.current_turn_player_id == ctx.author.id:
-                m.current_turn_player_id = bot_member.id
-                prev = f"🎲 **{ctx.author.display_name}** rolled **{r1}** and **{r2}** (Total: **{tot}**)"
-                b_style = "actionrow" if layout_type == "dice_row" else "inline"
-                new_v = DiceGameplayLayoutView(m, ctx.author, bot_member, bot_member, test_dice_cb, prev_roll_text=prev, button_style=b_style)
-            else:
-                m.current_turn_player_id = ctx.author.id
-                m.challenger.score += 1
-                new_v = DiceRoundResultLayoutView(m, ctx.author, bot_member, "6 and 4 (Total: 10)", f"{r1} and {r2} (Total: {tot})", winner_member=ctx.author, next_turn_member=ctx.author, action_cb=test_dice_cb)
-            await self._update_layout_message(interaction, new_v)
-
-        async def test_coinflip_cb(interaction: discord.Interaction, m, choice=None):
-            import random
-            flip = random.choice(["Heads", "Tails"])
-            prev = f"🪙 **{interaction.user.display_name}** chose **{choice}**. Coin landed on **{flip}**!"
-            new_v = CoinflipGameplayLayoutView(m, ctx.author, bot_member, ctx.author, test_coinflip_cb, prev_flip_text=prev)
-            await self._update_layout_message(interaction, new_v)
-
-        async def test_colordice_cb(interaction: discord.Interaction, m, choice=None):
-            import random
-            valid_c = ["red", "blue", "green", "yellow", "purple", "orange"]
-            c_emojis = {"red": "🔴", "blue": "🔵", "green": "🟢", "yellow": "🟡", "purple": "🟣", "orange": "🟠"}
-            rolled = [random.choice(valid_c) for _ in range(4)]
-            rolled_str = " ".join([c_emojis[c] for c in rolled])
-            cnt = rolled.count(choice)
-            if cnt == 1:
-                m.challenger.score += 1
-                status = f"✨ **Exact match! +1 point** ({m.challenger.score}/{m.target_score})"
-            else:
-                cnt_str = "0 times" if cnt == 0 else ("once" if cnt == 1 else f"{cnt} times")
-                status = f"❌ **No point!** Found {cnt_str} ({m.challenger.score}/{m.target_score})"
-            prev = f"🎲 **{interaction.user.display_name}** chose {c_emojis[choice]} **{choice.title()}**\n🎯 Rolled: {rolled_str}\n> {status}"
-            new_v = ColorDiceGameplayLayoutView(m, ctx.author, bot_member, ctx.author, test_colordice_cb, prev_roll_text=prev, button_style=cd_style)
-            await self._update_layout_message(interaction, new_v)
-
-        async def test_accept_cb(interaction: discord.Interaction):
-            new_v = DiceGameplayLayoutView(dummy_match, ctx.author, bot_member, ctx.author, test_dice_cb)
-            await self._update_layout_message(interaction, new_v)
-
-        async def test_decline_cb(interaction: discord.Interaction):
-            await interaction.response.send_message("❌ Challenge declined!", ephemeral=True)
-
-        if layout_type in ["colordice", "colordice_emoji", "colordice_grid", "colordice_menu"]:
-            dummy_match.game_type = GameType.COLORED_DICE
-            dummy_match.target_score = 5
-            view = ColorDiceGameplayLayoutView(
-                match=dummy_match,
-                c_member=ctx.author,
-                o_member=bot_member,
-                current_turn_member=ctx.author,
-                action_cb=test_colordice_cb,
-                prev_roll_text="🎲 **bot** chose 🔴 **Red**\n🎯 Rolled: 🔴 🔵 🟢 🟣\n> ✨ **Exact match! +1 point** (1/5)",
-                button_style=cd_style
-            )
-            await ctx.send(view=view)
-        elif layout_type == "dice_inline":
-            view = DiceGameplayLayoutView(
-                match=dummy_match,
-                c_member=ctx.author,
-                o_member=bot_member,
-                current_turn_member=ctx.author,
-                action_cb=test_dice_cb,
-                prev_roll_text=f"🎲 **{bot_member.display_name}** rolled **3** and **2** (Total: **5**)",
-                button_style="inline"
-            )
-            await ctx.send(view=view)
-        elif layout_type == "dice_row":
-            view = DiceGameplayLayoutView(
-                match=dummy_match,
-                c_member=ctx.author,
-                o_member=bot_member,
-                current_turn_member=ctx.author,
-                action_cb=test_dice_cb,
-                prev_roll_text=f"🎲 **{bot_member.display_name}** rolled **3** and **2** (Total: **5**)",
-                button_style="actionrow"
-            )
-            await ctx.send(view=view)
-        elif layout_type == "dice_result":
-            view = DiceRoundResultLayoutView(
-                match=dummy_match,
-                c_member=ctx.author,
-                o_member=bot_member,
-                c_result_str="**5** and **6** (Total: **11**)",
-                o_result_str="**2** and **3** (Total: **5**)",
-                winner_member=ctx.author,
-                next_turn_member=ctx.author,
-                action_cb=test_dice_cb
-            )
-            await ctx.send(view=view)
-        elif layout_type == "challenge":
-            view = ChallengeLayoutView(
-                challenger=ctx.author,
-                opponent=bot_member,
-                game_type="dice",
-                target_score=3,
-                accept_cb=test_accept_cb,
-                decline_cb=test_decline_cb
-            )
-            await ctx.send(view=view)
-        elif layout_type == "coinflip":
-            dummy_match.game_type = GameType.COINFLIP
-            view = CoinflipGameplayLayoutView(
-                match=dummy_match,
-                c_member=ctx.author,
-                o_member=bot_member,
-                current_turn_member=ctx.author,
-                action_cb=test_coinflip_cb,
-                prev_flip_text=f"🪙 **{bot_member.display_name}** called **Heads**. Result: **Tails**!"
-            )
-            await ctx.send(view=view)
-        elif layout_type == "winner":
-            view = MatchWinnerLayoutView(
-                winner=ctx.author,
-                target_score=3,
-                game_name="dice",
-                note="🎲 Final roll: **Hazrat** rolled **6** and **5** (Total: **11**)"
-            )
-            await ctx.send(view=view)
-        else:
-            await ctx.send("Unknown layout type!")
 
     async def _update_layout_message(self, interaction: discord.Interaction, view: discord.ui.LayoutView, content: str = None):
         """Updates the current message in-place with the given LayoutView, avoiding new message creation."""
@@ -760,6 +598,10 @@ class GamblingCog(commands.Cog):
         if not active_match:
             return
 
+        # Ensure text actions only trigger inside the match's designated ticket channel
+        if message.channel.id != active_match.channel_id:
+            return
+
         ctx = await self.bot.get_context(message)
         content = message.content.strip().lower()
 
@@ -994,8 +836,23 @@ class GamblingCog(commands.Cog):
         else:
             await match_manager.next_turn(match)
             next_player = await self.get_safe_member(ctx.guild, match.current_turn_player_id)
-            mention = next_player.mention if next_player else "Player"
-            await ctx.send(content=f"{mention}, it's your turn!", embed=embed)
+            challenger_member = await self.get_safe_member(ctx.guild, match.challenger.id)
+            opponent_member = await self.get_safe_member(ctx.guild, match.opponent.id)
+            score_status = f"✨ **Exact match! +1 point** ({player_obj.score}/{match.target_score})" if scored else f"❌ **No point!** Found {match_count} times ({player_obj.score}/{match.target_score})"
+            prev_roll_text = (
+                f"🎲 **{ctx.author.display_name}** chose {emojis.get(color_choice, '🎲')} **{color_choice.title()}**\n"
+                f"🎯 Rolled: {rolled_emojis}\n"
+                f"> {score_status}"
+            )
+            view = ColorDiceGameplayLayoutView(
+                match=match,
+                c_member=challenger_member,
+                o_member=opponent_member,
+                current_turn_member=next_player,
+                action_cb=self.play_turn,
+                prev_roll_text=prev_roll_text
+            )
+            await ctx.send(view=view)
 
     # ==================== BLACKJACK (1v1) SYSTEM ====================
 

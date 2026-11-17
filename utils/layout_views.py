@@ -251,12 +251,13 @@ class ColorDiceGameplayLayoutView(LayoutView):
         current_turn_member: discord.Member,
         action_cb,
         prev_roll_text: str = None,
-        button_style: str = "emoji"
+        button_style: str = "grid"
     ):
         super().__init__(timeout=None)
         self.match = match
         self.action_cb = action_cb
         self.button_style = button_style
+        self._processing = False
 
         header_text = "### 🎨 1v1 Color Dice"
         score_text = f"> 🏆 **{c_member.display_name}** ({match.challenger.score}) vs ({match.opponent.score}) **{o_member.display_name}** • *First to {match.target_score}*"
@@ -271,11 +272,13 @@ class ColorDiceGameplayLayoutView(LayoutView):
             children.append(TextDisplay(prev_roll_text))
             children.append(Separator(spacing=discord.SeparatorSpacing.small))
 
+        turn_tag = getattr(match, "turn_count", 0)
+
         if button_style == "menu":
-            children.append(TextDisplay(f"👉 **{current_turn_member.mention}**, tap to choose your color:"))
+            children.append(TextDisplay(f"👉 **{current_turn_member.mention}**, tap to choose your target color:"))
             sel = Select(
                 placeholder="🎨 Select a color to roll...",
-                custom_id="select_v2_cd_color",
+                custom_id=f"select_v2_cd_{turn_tag}",
                 options=[
                     discord.SelectOption(label="Red", emoji="🔴", value="red"),
                     discord.SelectOption(label="Blue", emoji="🔵", value="blue"),
@@ -287,54 +290,50 @@ class ColorDiceGameplayLayoutView(LayoutView):
             )
             sel.callback = self._on_select
             children.append(ActionRow(sel))
-        elif button_style == "grid":
-            # 2x3 grid with full labels: 2 buttons per row, perfectly balanced and never wraps on mobile
-            children.append(TextDisplay(f"👉 **{current_turn_member.mention}**, choose a color to roll:"))
-            g1 = ActionRow(
-                Button(label="Red", emoji="🔴", style=discord.ButtonStyle.danger, custom_id="btn_v2_cd_red"),
-                Button(label="Blue", emoji="🔵", style=discord.ButtonStyle.primary, custom_id="btn_v2_cd_blue"),
-            )
-            g1.children[0].callback = self._make_color_callback("red")
-            g1.children[1].callback = self._make_color_callback("blue")
+        elif button_style == "emoji":
+            # Compact emoji pads (3x2)
+            children.append(TextDisplay(f"👉 **{current_turn_member.mention}**, choose your target color to score:"))
 
-            g2 = ActionRow(
-                Button(label="Green", emoji="🟢", style=discord.ButtonStyle.success, custom_id="btn_v2_cd_green"),
-                Button(label="Yellow", emoji="🟡", style=discord.ButtonStyle.secondary, custom_id="btn_v2_cd_yellow"),
-            )
-            g2.children[0].callback = self._make_color_callback("green")
-            g2.children[1].callback = self._make_color_callback("yellow")
+            b_red = Button(emoji="🔴", style=discord.ButtonStyle.danger, custom_id=f"btn_v2_cd_red_{turn_tag}")
+            b_red.callback = self._make_color_callback("red")
+            b_blue = Button(emoji="🔵", style=discord.ButtonStyle.primary, custom_id=f"btn_v2_cd_blue_{turn_tag}")
+            b_blue.callback = self._make_color_callback("blue")
+            b_green = Button(emoji="🟢", style=discord.ButtonStyle.success, custom_id=f"btn_v2_cd_green_{turn_tag}")
+            b_green.callback = self._make_color_callback("green")
 
-            g3 = ActionRow(
-                Button(label="Purple", emoji="🟣", style=discord.ButtonStyle.secondary, custom_id="btn_v2_cd_purple"),
-                Button(label="Orange", emoji="🟠", style=discord.ButtonStyle.secondary, custom_id="btn_v2_cd_orange"),
-            )
-            g3.children[0].callback = self._make_color_callback("purple")
-            g3.children[1].callback = self._make_color_callback("orange")
+            b_yellow = Button(emoji="🟡", style=discord.ButtonStyle.secondary, custom_id=f"btn_v2_cd_yellow_{turn_tag}")
+            b_yellow.callback = self._make_color_callback("yellow")
+            b_purple = Button(emoji="🟣", style=discord.ButtonStyle.secondary, custom_id=f"btn_v2_cd_purple_{turn_tag}")
+            b_purple.callback = self._make_color_callback("purple")
+            b_orange = Button(emoji="🟠", style=discord.ButtonStyle.secondary, custom_id=f"btn_v2_cd_orange_{turn_tag}")
+            b_orange.callback = self._make_color_callback("orange")
+
+            row1 = ActionRow(b_red, b_blue, b_green)
+            row2 = ActionRow(b_yellow, b_purple, b_orange)
+            children.extend([row1, row2])
+        else:
+            # "grid" default: 2x3 grid with full labels: 2 buttons per row, perfectly balanced, never wraps awkwardly on mobile
+            children.append(TextDisplay(f"👉 **{current_turn_member.mention}**, choose your target color to score:"))
+
+            b_red = Button(label="Red", emoji="🔴", style=discord.ButtonStyle.danger, custom_id=f"btn_v2_cd_red_{turn_tag}")
+            b_red.callback = self._make_color_callback("red")
+            b_blue = Button(label="Blue", emoji="🔵", style=discord.ButtonStyle.primary, custom_id=f"btn_v2_cd_blue_{turn_tag}")
+            b_blue.callback = self._make_color_callback("blue")
+            g1 = ActionRow(b_red, b_blue)
+
+            b_green = Button(label="Green", emoji="🟢", style=discord.ButtonStyle.success, custom_id=f"btn_v2_cd_green_{turn_tag}")
+            b_green.callback = self._make_color_callback("green")
+            b_yellow = Button(label="Yellow", emoji="🟡", style=discord.ButtonStyle.secondary, custom_id=f"btn_v2_cd_yellow_{turn_tag}")
+            b_yellow.callback = self._make_color_callback("yellow")
+            g2 = ActionRow(b_green, b_yellow)
+
+            b_purple = Button(label="Purple", emoji="🟣", style=discord.ButtonStyle.secondary, custom_id=f"btn_v2_cd_purple_{turn_tag}")
+            b_purple.callback = self._make_color_callback("purple")
+            b_orange = Button(label="Orange", emoji="🟠", style=discord.ButtonStyle.secondary, custom_id=f"btn_v2_cd_orange_{turn_tag}")
+            b_orange.callback = self._make_color_callback("orange")
+            g3 = ActionRow(b_purple, b_orange)
 
             children.extend([g1, g2, g3])
-        else:
-            # "emoji" default: Ultra-compact square emoji buttons (3x2), reduces width by 65% so it NEVER wraps on mobile!
-            children.append(TextDisplay(f"👉 **{current_turn_member.mention}**, tap a color pad to roll:"))
-
-            row1 = ActionRow(
-                Button(emoji="🔴", style=discord.ButtonStyle.danger, custom_id="btn_v2_cd_red"),
-                Button(emoji="🔵", style=discord.ButtonStyle.primary, custom_id="btn_v2_cd_blue"),
-                Button(emoji="🟢", style=discord.ButtonStyle.success, custom_id="btn_v2_cd_green"),
-            )
-            row1.children[0].callback = self._make_color_callback("red")
-            row1.children[1].callback = self._make_color_callback("blue")
-            row1.children[2].callback = self._make_color_callback("green")
-
-            row2 = ActionRow(
-                Button(emoji="🟡", style=discord.ButtonStyle.secondary, custom_id="btn_v2_cd_yellow"),
-                Button(emoji="🟣", style=discord.ButtonStyle.secondary, custom_id="btn_v2_cd_purple"),
-                Button(emoji="🟠", style=discord.ButtonStyle.secondary, custom_id="btn_v2_cd_orange"),
-            )
-            row2.children[0].callback = self._make_color_callback("yellow")
-            row2.children[1].callback = self._make_color_callback("purple")
-            row2.children[2].callback = self._make_color_callback("orange")
-
-            children.extend([row1, row2])
 
         container = Container(*children, accent_colour=COLOR_PURPLE)
         self.add_item(container)
@@ -343,6 +342,9 @@ class ColorDiceGameplayLayoutView(LayoutView):
         if interaction.user.id != self.match.current_turn_player_id:
             await interaction.response.send_message(embed=build_error_embed("It's not your turn!"), ephemeral=True)
             return
+        if self._processing:
+            return
+        self._processing = True
         choice = interaction.data["values"][0]
         await self.action_cb(interaction, self.match, choice=choice)
 
@@ -351,6 +353,9 @@ class ColorDiceGameplayLayoutView(LayoutView):
             if interaction.user.id != self.match.current_turn_player_id:
                 await interaction.response.send_message(embed=build_error_embed("It's not your turn!"), ephemeral=True)
                 return
+            if self._processing:
+                return
+            self._processing = True
             await self.action_cb(interaction, self.match, choice=color_name)
         return callback
 

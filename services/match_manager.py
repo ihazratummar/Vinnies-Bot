@@ -114,6 +114,7 @@ class MatchManager:
 
     async def next_turn(self, match: Match):
         async with self.lock:
+            match.turn_count = getattr(match, "turn_count", 0) + 1
             if match.current_turn_player_id == match.challenger.id:
                 match.current_turn_player_id = match.opponent.id
             else:
