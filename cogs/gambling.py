@@ -35,6 +35,7 @@ from utils.embeds import (
     COLOR_DEFAULT
 )
 from services.card_renderer import generate_blackjack_table
+from services.diamond_renderer import generate_diamond_board, ALL_HAZARDS
 from discord import app_commands
 import typing
 
@@ -212,31 +213,32 @@ class GamblingCog(commands.Cog):
 
 
 
-    async def _update_layout_message(self, interaction: discord.Interaction, view: discord.ui.LayoutView, content: str = None):
+    async def _update_layout_message(self, interaction: discord.Interaction, view: discord.ui.LayoutView, content: str = None, file: discord.File = None):
         """Updates the current message in-place with the given LayoutView, avoiding new message creation."""
+        attachments = [file] if file else []
         # 1. If interaction has already been deferred or responded to
         if interaction.response.is_done():
             try:
-                return await interaction.edit_original_response(content=content, embed=None, attachments=[], view=view)
+                return await interaction.edit_original_response(content=content, embed=None, attachments=attachments, view=view)
             except Exception:
                 pass
             if interaction.message:
                 try:
-                    return await interaction.message.edit(content=content, embed=None, attachments=[], view=view)
+                    return await interaction.message.edit(content=content, embed=None, attachments=attachments, view=view)
                 except Exception:
                     pass
         else:
             # 2. If interaction has not been responded to yet
             try:
-                return await interaction.response.edit_message(content=content, embed=None, attachments=[], view=view)
+                return await interaction.response.edit_message(content=content, embed=None, attachments=attachments, view=view)
             except Exception:
                 pass
 
         # 3. Fallback if editing is somehow impossible
         if not interaction.response.is_done():
-            return await interaction.response.send_message(content=content, view=view)
+            return await interaction.response.send_message(content=content, view=view, file=file)
         else:
-            return await interaction.followup.send(content=content, view=view)
+            return await interaction.followup.send(content=content, view=view, file=file)
 
     async def accept_challenge(self, interaction: discord.Interaction):
         await interaction.response.defer()
@@ -296,26 +298,40 @@ class GamblingCog(commands.Cog):
             unhashed = f"{server_seed}:{diamond_tile}"
             fair_hash = hashlib.sha256(unhashed.encode('utf-8')).hexdigest()
 
+            # Randomly select 3 hazards from ALL_HAZARDS pool for this match
+            selected_hazards = random.sample(ALL_HAZARDS, 3)
+            other_tiles = [t for t in range(1, 17) if t != diamond_tile]
+            random.shuffle(other_tiles)
+            tile_hazards = {}
+            for i, t in enumerate(other_tiles):
+                tile_hazards[t] = selected_hazards[i % 3]
+
             match.diamond_data.update({
                 "match_id": match_id,
                 "wager": wager_val,
                 "diamond_tile": diamond_tile,
                 "server_seed": server_seed,
                 "hash": fair_hash,
+                "selected_hazards": selected_hazards,
+                "tile_hazards": tile_hazards,
                 "revealed": {},
                 "presses": 0,
                 "winner_id": None,
                 "is_finished": False
             })
 
+            img_buf = generate_diamond_board(match)
+            file = discord.File(fp=img_buf, filename="diamond_board.png")
+
             view = DiamondGameplayLayoutView(
                 match=match,
                 c_member=challenger,
                 o_member=opponent,
                 current_turn_member=challenger,
-                action_cb=self.play_diamond_turn
+                action_cb=self.play_diamond_turn,
+                has_image=True
             )
-            await self._update_layout_message(interaction, view)
+            await self._update_layout_message(interaction, view, file=file)
         else:
             try:
                 await interaction.message.edit(view=None)
@@ -624,12 +640,10 @@ class GamblingCog(commands.Cog):
             match.diamond_data["winner_id"] = interaction.user.id
             match.diamond_data["winner_tile"] = tile
 
-            wager = match.diamond_data.get("wager", 2.0)
-            total_pot = wager * 2
-            rake = round(total_pot * 0.05, 2)
-            payout = round(total_pot - rake, 2)
-
             await match_manager.end_match(match)
+
+            img_buf = generate_diamond_board(match)
+            file = discord.File(fp=img_buf, filename="diamond_board.png")
 
             view = DiamondGameplayLayoutView(
                 match=match,
@@ -638,22 +652,26 @@ class GamblingCog(commands.Cog):
                 current_turn_member=None,
                 action_cb=self.play_diamond_turn,
                 winner_member=interaction.user,
-                payout=payout
+                has_image=True
             )
-            await self._update_layout_message(interaction, view)
+            await self._update_layout_message(interaction, view, file=file)
         else:
             revealed[tile] = False
             await match_manager.next_turn(match)
             next_player = await self.get_safe_member(interaction.guild, match.current_turn_player_id)
+
+            img_buf = generate_diamond_board(match)
+            file = discord.File(fp=img_buf, filename="diamond_board.png")
 
             view = DiamondGameplayLayoutView(
                 match=match,
                 c_member=challenger,
                 o_member=opponent,
                 current_turn_member=next_player,
-                action_cb=self.play_diamond_turn
+                action_cb=self.play_diamond_turn,
+                has_image=True
             )
-            await self._update_layout_message(interaction, view)
+            await self._update_layout_message(interaction, view, file=file)
 
     async def verify_diamond_game(self, interaction: discord.Interaction, match):
         d_data = match.diamond_data
@@ -1086,12 +1104,10 @@ class GamblingCog(commands.Cog):
             match.diamond_data["winner_id"] = ctx.author.id
             match.diamond_data["winner_tile"] = tile
 
-            wager = match.diamond_data.get("wager", 2.0)
-            total_pot = wager * 2
-            rake = round(total_pot * 0.05, 2)
-            payout = round(total_pot - rake, 2)
-
             await match_manager.end_match(match)
+
+            img_buf = generate_diamond_board(match)
+            file = discord.File(fp=img_buf, filename="diamond_board.png")
 
             view = DiamondGameplayLayoutView(
                 match=match,
@@ -1100,22 +1116,26 @@ class GamblingCog(commands.Cog):
                 current_turn_member=None,
                 action_cb=self.play_diamond_turn,
                 winner_member=ctx.author,
-                payout=payout
+                has_image=True
             )
-            await ctx.send(view=view)
+            await ctx.send(file=file, view=view)
         else:
             revealed[tile] = False
             await match_manager.next_turn(match)
             next_player = await self.get_safe_member(ctx.guild, match.current_turn_player_id)
+
+            img_buf = generate_diamond_board(match)
+            file = discord.File(fp=img_buf, filename="diamond_board.png")
 
             view = DiamondGameplayLayoutView(
                 match=match,
                 c_member=challenger,
                 o_member=opponent,
                 current_turn_member=next_player,
-                action_cb=self.play_diamond_turn
+                action_cb=self.play_diamond_turn,
+                has_image=True
             )
-            await ctx.send(view=view)
+            await ctx.send(file=file, view=view)
 
     # ==================== BLACKJACK (1v1) SYSTEM ====================
 

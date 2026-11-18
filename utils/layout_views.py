@@ -451,10 +451,13 @@ class DiamondGameplayLayoutView(LayoutView):
     """
     Component v2 layout for 1v1 'Find the Diamond' minigame.
     Features:
-    - 4x4 interactive button grid (Buttons 1-16) across 4 ActionRows
-    - Real-time in-place card updates
-    - Turn synchronization with concurrency guard
-    - Authentic Discord v2 Component styling matching client requirements
+    - Sleek, compact 4x4 interactive button grid (Buttons 1-16) across 4 ActionRows
+    - Real-time in-place card updates without chat spam
+    - High-contrast casino styling matching client reference:
+      * Active tiles: Primary Blurple with clean numbers 1-16
+      * Missed tiles: Dark recessed tiles with ❌
+      * Winning tile: Radiant Emerald Green with 💎
+    - 100% mobile and desktop responsive single-card design
     """
     def __init__(
         self,
@@ -465,7 +468,8 @@ class DiamondGameplayLayoutView(LayoutView):
         action_cb = None,
         winner_member: discord.Member = None,
         payout: float = 0.0,
-        verify_cb = None
+        verify_cb = None,
+        has_image: bool = True
     ):
         super().__init__(timeout=None)
         self.match = match
@@ -503,6 +507,12 @@ class DiamondGameplayLayoutView(LayoutView):
             Separator(spacing=discord.SeparatorSpacing.small)
         ]
 
+        if has_image:
+            gallery_item = discord.MediaGalleryItem("attachment://diamond_board.png")
+            gallery = MediaGallery(gallery_item)
+            children.append(gallery)
+            children.append(Separator(spacing=discord.SeparatorSpacing.small))
+
         # 4x4 Grid of Buttons (4 ActionRows of 4 buttons)
         for row_idx in range(4):
             row_buttons = []
@@ -526,19 +536,13 @@ class DiamondGameplayLayoutView(LayoutView):
                             custom_id=f"btn_v2_dm_{tile_num}_miss"
                         )
                 else:
-                    if is_finished:
-                        btn = Button(
-                            label=str(tile_num),
-                            style=discord.ButtonStyle.secondary,
-                            disabled=True,
-                            custom_id=f"btn_v2_dm_{tile_num}_done"
-                        )
-                    else:
-                        btn = Button(
-                            label=str(tile_num),
-                            style=discord.ButtonStyle.primary,
-                            custom_id=f"btn_v2_dm_{tile_num}_{turn_tag}"
-                        )
+                    btn = Button(
+                        label=str(tile_num),
+                        style=discord.ButtonStyle.primary,
+                        disabled=is_finished,
+                        custom_id=f"btn_v2_dm_{tile_num}_{'done' if is_finished else turn_tag}"
+                    )
+                    if not is_finished:
                         btn.callback = self._make_tile_callback(tile_num)
 
                 row_buttons.append(btn)
